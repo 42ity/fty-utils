@@ -1,6 +1,7 @@
 #pragma once
 
 #include "convert.h"
+#include "expected.h"
 #include "split.h"
 #include <functional>
 #include <iostream>
@@ -62,7 +63,7 @@ public:
 public:
     CommandLine(const std::string& description, std::initializer_list<OptionDef> options);
 
-    bool                            parse(int argc, char** argv);
+    Expected<bool>                  parse(int argc, char** argv);
     std::string                     help() const;
     const std::vector<std::string>& positionalArgs() const;
     Option&                         option(const std::string& key);
@@ -116,7 +117,7 @@ bool CommandLine::Option::match(const std::string& value)
 
 void CommandLine::Option::consume(std::vector<std::string>& args)
 {
-    for(auto it = args.begin(); it != args.end(); ){
+    for (auto it = args.begin(); it != args.end();) {
         if (!match(*it)) {
             ++it;
             continue;
@@ -139,9 +140,9 @@ void CommandLine::Option::consume(std::vector<std::string>& args)
                 m_option.setter("");
                 args.erase(it);
             } else {
-                if (it+1 != args.end()) {
+                if (it + 1 != args.end()) {
                     setValue(*(it + 1));
-                    args.erase(it+1);
+                    args.erase(it + 1);
                     args.erase(it);
                 } else {
                     throw std::runtime_error("Wrong format of option " + arg);
@@ -229,27 +230,24 @@ CommandLine::CommandLine(const std::string& description, std::initializer_list<O
     }
 }
 
-bool CommandLine::parse(int argc, char** argv)
+Expected<bool> CommandLine::parse(int argc, char** argv)
 {
-    std::vector<std::string> args(argv+1, argv+argc);
+    std::vector<std::string> args(argv + 1, argv + argc);
     try {
         for (auto& opt : m_options) {
             opt->consume(args);
         }
     } catch (const std::runtime_error& err) {
-        m_error = err.what();
-        return false;
+        return unexpected(err.what());
     }
-    bool isError = false;
-    for(const auto& it: args) {
+    for (const auto& it : args) {
         if (it.find("-") == 0) {
-            isError = true;
-            std::cerr << "Unknown option " << it << std::endl;
+            return unexpected() << "Unknown option " << it;
         } else {
             m_positionalArgs.push_back(it);
         }
     }
-    return !isError;
+    return true;
 }
 
 std::string CommandLine::help() const
