@@ -135,6 +135,7 @@ private:
     std::deque<std::shared_ptr<ITask>> m_tasks;
     std::atomic<size_t>                m_useCount = 0;
     details::PoolWatcher               m_watcher;
+    size_t                             m_minNumThreads = 0;
 };
 
 // ===========================================================================================================
@@ -196,6 +197,8 @@ void ThreadPool::create(size_t numThreads)
         return;
     }
 
+    m_minNumThreads = numThreads;
+
     for (size_t i = 0; i < numThreads; ++i) {
         allocThread();
     }
@@ -215,7 +218,7 @@ void ThreadPool::allocThread()
                     return !m_tasks.empty() || m_stop;
                 });
 
-                if (!m_stop && m_tasks.empty()) {
+                if (!m_stop && m_tasks.empty() && m_threads.size() > m_minNumThreads) {
                     m_watcher.clear(std::this_thread::get_id());
                     return;
                 }
@@ -273,7 +276,7 @@ ITask& ThreadPool::pushWorker(Args&&... args)
 template <typename Func, typename... Args>
 ITask& ThreadPool::pushWorker(Func&& fnc, Args&&... args)
 {
-    auto&                        inst = instance();
+    auto&                                 inst = instance();
     std::shared_ptr<details::GenericTask> task;
     {
         std::lock_guard<std::mutex> lock(inst.m_mutex);
