@@ -146,7 +146,7 @@ Task<T>::Task() = default;
 
 // ===========================================================================================================
 
-ThreadPool::ThreadPool()
+inline ThreadPool::ThreadPool()
     : m_watcher([&](std::thread::id id) {
         std::lock_guard<std::mutex> lock(m_mutex);
         for (auto iter = m_threads.begin(); iter != m_threads.end(); ++iter) {
@@ -160,12 +160,12 @@ ThreadPool::ThreadPool()
 {
 }
 
-ThreadPool::~ThreadPool()
+inline ThreadPool::~ThreadPool()
 {
     stop(Stop::Immedialy);
 }
 
-void ThreadPool::stop(Stop mode)
+inline void ThreadPool::stop(Stop mode)
 {
     auto& inst = instance();
     if (!inst.m_stop) {
@@ -191,7 +191,7 @@ void ThreadPool::stop(Stop mode)
     }
 }
 
-void ThreadPool::create(size_t numThreads)
+inline void ThreadPool::create(size_t numThreads)
 {
     if (!m_threads.empty()) {
         return;
@@ -204,7 +204,7 @@ void ThreadPool::create(size_t numThreads)
     }
 }
 
-void ThreadPool::allocThread()
+inline void ThreadPool::allocThread()
 {
     using namespace std::chrono_literals;
 
@@ -244,13 +244,13 @@ void ThreadPool::allocThread()
     }));
 }
 
-void ThreadPool::init(size_t numThreads)
+inline void ThreadPool::init(size_t numThreads)
 {
     auto& pool = instance();
     pool.create(numThreads);
 }
 
-ThreadPool& ThreadPool::instance()
+inline ThreadPool& ThreadPool::instance()
 {
     static ThreadPool inst;
     return inst;
@@ -299,12 +299,12 @@ details::PoolWatcher::PoolWatcher(Func&& clearFunc)
 {
 }
 
-details::PoolWatcher::~PoolWatcher()
+inline details::PoolWatcher::~PoolWatcher()
 {
     stop();
 }
 
-void details::PoolWatcher::run()
+inline void details::PoolWatcher::run()
 {
     while (true) {
         {
@@ -327,7 +327,7 @@ void details::PoolWatcher::run()
     }
 }
 
-void details::PoolWatcher::clear(std::thread::id id)
+inline void details::PoolWatcher::clear(std::thread::id id)
 {
     {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -336,7 +336,7 @@ void details::PoolWatcher::clear(std::thread::id id)
     m_cv.notify_all();
 }
 
-void details::PoolWatcher::stop()
+inline void details::PoolWatcher::stop()
 {
     if (!m_stop) {
         {
