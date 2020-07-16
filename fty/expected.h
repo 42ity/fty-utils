@@ -49,6 +49,27 @@ private:
     bool m_isError = false;
 };
 
+template <>
+class Expected<void>
+{
+public:
+    Expected() noexcept;
+    Expected(Unexpected&& unex) noexcept;
+    Expected(const Unexpected& unex) noexcept;
+
+    Expected(const Expected&) = delete;
+    Expected& operator=(const Expected&) = delete;
+
+    constexpr bool isValid() const noexcept;
+    constexpr      operator bool() const noexcept;
+
+    constexpr const std::string& error() const& noexcept;
+
+private:
+    std::string m_error = {};
+    bool        m_isError = false;
+};
+
 // ===========================================================================================================
 
 struct Unexpected
@@ -112,7 +133,7 @@ constexpr const T& Expected<T>::value() const& noexcept
 }
 
 template <typename T>
-constexpr T& Expected<T>::value() & noexcept
+    constexpr T& Expected<T>::value() & noexcept
 {
     assert(!m_isError);
     return m_value;
@@ -126,7 +147,7 @@ constexpr const T&& Expected<T>::value() const&& noexcept
 }
 
 template <typename T>
-constexpr T&& Expected<T>::value() && noexcept
+    constexpr T&& Expected<T>::value() && noexcept
 {
     assert(!m_isError);
     return std::move(m_value);
@@ -159,7 +180,7 @@ constexpr const T& Expected<T>::operator*() const& noexcept
 }
 
 template <typename T>
-constexpr T& Expected<T>::operator*() & noexcept
+    constexpr T& Expected<T>::operator*() & noexcept
 {
     assert(!m_isError);
     return m_value;
@@ -173,7 +194,7 @@ constexpr const T&& Expected<T>::operator*() const&& noexcept
 }
 
 template <typename T>
-constexpr T&& Expected<T>::operator*() && noexcept
+    constexpr T&& Expected<T>::operator*() && noexcept
 {
     assert(!m_isError);
     return std::move(m_value);
@@ -199,6 +220,39 @@ Unexpected& Unexpected::operator<<(const T& val)
 {
     message += fty::convert<std::string>(val);
     return *this;
+}
+
+// ===========================================================================================================
+
+inline Expected<void>::Expected() noexcept
+{
+}
+
+inline Expected<void>::Expected(Unexpected&& unex) noexcept
+    : m_error(std::move(unex.message))
+    , m_isError(true)
+{
+}
+
+inline Expected<void>::Expected(const Unexpected& unex) noexcept
+    : m_error(unex.message)
+    , m_isError(true)
+{
+}
+
+inline constexpr bool Expected<void>::isValid() const noexcept
+{
+    return m_isError;
+}
+
+inline constexpr Expected<void>::operator bool() const noexcept
+{
+    return !m_isError;
+}
+
+inline constexpr const std::string& Expected<void>::error() const& noexcept
+{
+    return m_error;
 }
 
 // ===========================================================================================================

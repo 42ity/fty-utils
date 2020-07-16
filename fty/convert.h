@@ -22,6 +22,10 @@ T convert(const VT& value)
             return std::stof(string);
         } else if constexpr (std::is_same_v<T, double>) {
             return std::stod(string);
+        } else if constexpr (std::is_same_v<T, int16_t>) {
+            return std::stoi(string);
+        } else if constexpr (std::is_same_v<T, uint16_t>) {
+            return std::stoul(string);
         } else if constexpr (std::is_same_v<T, int32_t>) {
             return std::stoi(string);
         } else if constexpr (std::is_same_v<T, uint32_t>) {

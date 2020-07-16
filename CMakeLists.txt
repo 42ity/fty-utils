@@ -24,7 +24,7 @@ etn_target(interface ${PROJECT_NAME}
 
 
 ##############################################################################################################
-
+set(BUILD_TESTING ON)
 if (BUILD_TESTING)
     enable_testing()
     add_subdirectory(test)

@@ -60,4 +60,21 @@ TEST_CASE("Expected")
         CHECK(!st);
         CHECK("wrong 42" == st.error());
     }
+
+    SECTION("Void expected")
+    {
+        auto it = fty::Expected<void>();
+        CHECK(it);
+
+        auto func = []() -> fty::Expected<void> {
+            return {};
+        };
+        auto func2 = []() -> fty::Expected<void> {
+            return fty::unexpected("some error");
+        };
+        CHECK(func());
+        auto res = func2();
+        CHECK(!res);
+        CHECK("some error" == res.error());
+    }
 }
