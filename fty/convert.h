@@ -34,6 +34,8 @@ T convert(const VT& value)
             return std::stoll(string);
         } else if constexpr (std::is_same_v<T, uint64_t>) {
             return std::stoull(string);
+        } else if constexpr (std::is_same_v<T, unsigned char>) {
+            return static_cast<unsigned char>(string[0]);
         } else {
             static_assert(fty::always_false<T>, "Unsupported type");
         }
