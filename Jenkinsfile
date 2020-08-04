@@ -51,7 +51,7 @@ pipeline {
             }
         }
 
-        stage('Memchecks') {
+        /*stage('Memchecks') {
             when {
                 environment name: 'RUN_MEMCHECKS', value: 'true'
             }
@@ -61,7 +61,7 @@ pipeline {
                 installation: 'InSearchPath',
                 steps: [[args: 'test memcheck']]
             }
-        }
+        }*/
 
         stage ('deploy if appropriate') {
             steps {
