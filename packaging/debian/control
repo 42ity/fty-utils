@@ -1,0 +1,11 @@
+Source: fty-utils
+Maintainer: Clement Perrette <clementperrette@eaton.com>
+Build-Depends: fty-cmake, cmake (>=3.0), debhelper (>= 9)
+Standards-Version: 1.0.0
+Section: devel
+Priority: extra
+
+Package: fty-utils-dev
+Architecture: any
+Depends: ${misc:Depends}
+Description: Single header library with severals tools
