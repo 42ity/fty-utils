@@ -79,7 +79,7 @@ namespace details {
 
     private:
         std::thread                          m_thread;
-        bool                                 m_stop = false;
+        std::atomic_bool                     m_stop = false;
         std::mutex                           m_mutex;
         std::condition_variable              m_cv;
         std::optional<std::thread::id>       m_toClear;
@@ -120,37 +120,32 @@ public:
     };
 
 public:
+    ThreadPool(size_t numThreads = std::thread::hardware_concurrency() - 1);
     ~ThreadPool();
 
     ThreadPool(const ThreadPool&) = delete;
     ThreadPool& operator=(const ThreadPool&) = delete;
 
-    static void stop(Stop mode = Stop::WaitForQueue);
-
-    static void init(size_t numThreads = std::thread::hardware_concurrency() - 1);
+    void stop(Stop mode = Stop::WaitForQueue);
 
 public:
     template <typename T, typename... Args>
-    static ITask& pushWorker(Args&&... args);
+    ITask& pushWorker(Args&&... args);
 
     template <typename Func, typename... Args>
-    static ITask& pushWorker(Func&& fnc, Args&&... args);
+    ITask& pushWorker(Func&& fnc, Args&&... args);
 
 private:
-    ThreadPool();
-    void               create(size_t numThreads);
-    void               allocThread();
-    static ThreadPool& instance();
+    void allocThread();
 
 private:
+    size_t                             m_minNumThreads = 0;
     std::vector<std::thread>           m_threads;
     std::mutex                         m_mutex;
     std::condition_variable            m_cv;
     bool                               m_stop = false;
     std::deque<std::shared_ptr<ITask>> m_tasks;
-    std::atomic<size_t>                m_useCount = 0;
     details::PoolWatcher               m_watcher;
-    size_t                             m_minNumThreads = 0;
 };
 
 // ===========================================================================================================
@@ -161,8 +156,9 @@ Task<T>::Task() = default;
 
 // ===========================================================================================================
 
-inline ThreadPool::ThreadPool()
-    : m_watcher([&](std::thread::id id) {
+inline ThreadPool::ThreadPool(size_t numThreads)
+    : m_minNumThreads(numThreads)
+    , m_watcher([&](std::thread::id id) {
         std::lock_guard<std::mutex> lock(m_mutex);
         for (auto iter = m_threads.begin(); iter != m_threads.end(); ++iter) {
             if (iter->get_id() == id) {
@@ -173,6 +169,9 @@ inline ThreadPool::ThreadPool()
         }
     })
 {
+    for (size_t i = 0; i < numThreads; ++i) {
+        allocThread();
+    }
 }
 
 inline ThreadPool::~ThreadPool()
@@ -182,40 +181,27 @@ inline ThreadPool::~ThreadPool()
 
 inline void ThreadPool::stop(Stop mode)
 {
-    auto& inst = instance();
-    if (!inst.m_stop) {
-        inst.m_watcher.stop();
+    if (!m_stop) {
+        m_watcher.stop();
         {
             if (mode == Stop::WaitForQueue) {
-                std::unique_lock<std::mutex> lock(inst.m_mutex, std::defer_lock);
-                inst.m_cv.wait(lock, [&]() {
-                    return inst.m_tasks.empty();
+                std::unique_lock<std::mutex> lock(m_mutex, std::defer_lock);
+                m_cv.wait(lock, [&]() {
+                    return m_tasks.empty();
                 });
             }
 
-            std::lock_guard<std::mutex> lock(inst.m_mutex);
-            inst.m_stop = true;
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_stop = true;
         }
-        inst.m_cv.notify_all();
+        m_cv.notify_all();
 
-        for (std::thread& thread : inst.m_threads) {
+        for (std::thread& thread : m_threads) {
             if (thread.joinable()) {
                 thread.join();
             }
         }
-    }
-}
-
-inline void ThreadPool::create(size_t numThreads)
-{
-    if (!m_threads.empty()) {
-        return;
-    }
-
-    m_minNumThreads = numThreads;
-
-    for (size_t i = 0; i < numThreads; ++i) {
-        allocThread();
+        m_threads.clear();
     }
 }
 
@@ -249,59 +235,43 @@ inline void ThreadPool::allocThread()
             }
             m_cv.notify_all();
             if (task) {
-                ++m_useCount;
                 task->started();
                 (*task)();
                 task->stopped();
-                --m_useCount;
             }
         }
     }));
 }
 
-inline void ThreadPool::init(size_t numThreads)
-{
-    auto& pool = instance();
-    pool.create(numThreads);
-}
-
-inline ThreadPool& ThreadPool::instance()
-{
-    static ThreadPool inst;
-    return inst;
-}
-
 template <typename T, typename... Args>
 ITask& ThreadPool::pushWorker(Args&&... args)
 {
-    auto&              inst = instance();
     std::shared_ptr<T> task;
     {
-        std::lock_guard<std::mutex> lock(inst.m_mutex);
-        if (inst.m_tasks.size() >= inst.m_threads.size()) {
-            inst.allocThread();
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (m_tasks.size() >= m_threads.size()) {
+            allocThread();
         }
         task = std::make_shared<T>(std::forward<Args>(args)...);
-        inst.m_tasks.emplace_back(task);
+        m_tasks.emplace_back(task);
     }
-    inst.m_cv.notify_all();
+    m_cv.notify_all();
     return *task;
 }
 
 template <typename Func, typename... Args>
 ITask& ThreadPool::pushWorker(Func&& fnc, Args&&... args)
 {
-    auto&                                 inst = instance();
     std::shared_ptr<details::GenericTask> task;
     {
-        std::lock_guard<std::mutex> lock(inst.m_mutex);
-        if (inst.m_tasks.size() >= inst.m_threads.size()) {
-            inst.allocThread();
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (m_tasks.size() >= m_threads.size()) {
+            allocThread();
         }
         task = std::make_shared<details::GenericTask>(std::move(fnc), std::forward<Args>(args)...);
-        inst.m_tasks.emplace_back(task);
+        m_tasks.emplace_back(task);
     }
-    inst.m_cv.notify_all();
+    m_cv.notify_all();
     return *task;
 }
 
@@ -321,24 +291,22 @@ inline details::PoolWatcher::~PoolWatcher()
 
 inline void details::PoolWatcher::run()
 {
+    using namespace std::chrono_literals;
     while (true) {
-        {
-            std::unique_lock<std::mutex> lock(m_mutex);
+        std::unique_lock<std::mutex> lock(m_mutex);
 
-            m_cv.wait(lock, [&]() {
-                return m_stop || m_toClear;
-            });
+        m_cv.wait_for(lock, 100ms, [&]() {
+            return m_stop || m_toClear;
+        });
 
-            if (m_stop) {
-                return;
-            }
+        if (m_stop) {
+            return;
         }
-        m_cv.notify_all();
 
         if (m_toClear) {
             m_clearFunc(*m_toClear);
+            m_toClear = std::nullopt;
         }
-        m_toClear = std::nullopt;
     }
 }
 
@@ -348,7 +316,7 @@ inline void details::PoolWatcher::clear(std::thread::id id)
         std::lock_guard<std::mutex> lock(m_mutex);
         m_toClear = id;
     }
-    m_cv.notify_all();
+    m_cv.notify_one();
 }
 
 inline void details::PoolWatcher::stop()
@@ -358,8 +326,10 @@ inline void details::PoolWatcher::stop()
             std::lock_guard<std::mutex> lock(m_mutex);
             m_stop = true;
         }
-        m_cv.notify_all();
-        m_thread.join();
+        m_cv.notify_one();
+        if (m_thread.joinable()) {
+            m_thread.join();
+        }
     }
 }
 
