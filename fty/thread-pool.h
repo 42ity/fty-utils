@@ -78,12 +78,12 @@ namespace details {
         void run();
 
     private:
-        std::thread                          m_thread;
-        std::atomic_bool                     m_stop = false;
-        std::mutex                           m_mutex;
-        std::condition_variable              m_cv;
         std::optional<std::thread::id>       m_toClear;
+        std::mutex                           m_mutex;
+        std::atomic_bool                     m_stop = false;
+        std::condition_variable              m_cv;
         std::function<void(std::thread::id)> m_clearFunc;
+        std::thread                          m_thread;
     };
 
     class GenericTask : public Task<GenericTask>
@@ -291,11 +291,10 @@ inline details::PoolWatcher::~PoolWatcher()
 
 inline void details::PoolWatcher::run()
 {
-    using namespace std::chrono_literals;
-    while (true) {
+    while (!m_stop) {
         std::unique_lock<std::mutex> lock(m_mutex);
 
-        m_cv.wait_for(lock, 100ms, [&]() {
+        m_cv.wait(lock, [&]() {
             return m_stop || m_toClear;
         });
 
