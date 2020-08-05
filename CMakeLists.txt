@@ -20,6 +20,7 @@ etn_target(interface ${PROJECT_NAME}
         fty/expected.h
         fty/event.h
         fty/thread-pool.h
+        fty/flags.h
 )
 
 
