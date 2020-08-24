@@ -1,4 +1,4 @@
-etn_target(exe ${PROJECT_NAME}-test
+etn_test(${PROJECT_NAME}-test
     SOURCES
         main.cpp
         split.cpp
@@ -10,5 +10,3 @@ etn_target(exe ${PROJECT_NAME}-test
         Catch2::Catch2
         pthread
 )
-
-ParseAndAddCatchTests(${PROJECT_NAME}-test)
