@@ -51,6 +51,7 @@ std::string convert(const Test& test)
     switch (test) {
     case Test::One: return "One";
     case Test::Two: return "Two";
+    default: return "";
     }
 }
 
