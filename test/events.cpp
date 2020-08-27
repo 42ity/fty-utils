@@ -98,8 +98,8 @@ TEST_CASE("Event thread")
     int                     val   = 0;
 
     std::thread th2([&]() {
-        fty::Slot<int&> slot([&](int& val) {
-            val = 42;
+        fty::Slot<int&> slot([&](int& inVal) {
+            inVal = 42;
         });
         sig.connect(slot);
 
