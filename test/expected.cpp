@@ -68,7 +68,7 @@ TEST_CASE("Expected")
     SECTION("Return streamed unexpected")
     {
         auto func = []() -> fty::Expected<St> {
-            return fty::unexpected() << "wrong " << 42;
+            return fty::unexpected("wrong {}", 42);
         };
 
         fty::Expected<St> st = func();

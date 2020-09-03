@@ -14,6 +14,7 @@
     ========================================================================
 */
 #pragma once
+#include <type_traits>
 
 #define ENABLE_FLAGS(EnumType)                                                                               \
     constexpr EnumType operator~(EnumType rhs) noexcept                                                      \

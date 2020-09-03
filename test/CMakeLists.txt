@@ -1,3 +1,5 @@
+include(CTest)
+
 etn_test(${PROJECT_NAME}-test
     SOURCES
         main.cpp

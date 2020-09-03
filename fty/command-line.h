@@ -19,7 +19,6 @@
 #include "expected.h"
 #include "split.h"
 #include <functional>
-#include <iostream>
 #include <memory>
 #include <sstream>
 #include <vector>
@@ -97,7 +96,11 @@ template <typename T>
 CommandLine::OptionDef::OptionDef(const std::string& fmt, T& var, const std::string& descr)
     : setter([&](const std::string& val) {
         if constexpr (std::is_same_v<bool, T>) {
-            var = true;
+            if (!val.empty()) {
+                var = convert<bool>(val);
+            } else {
+                var = true;
+            }
         } else {
             var = convert<T>(val);
         }
@@ -257,7 +260,7 @@ Expected<bool> CommandLine::parse(int argc, char** argv)
     }
     for (const auto& it : args) {
         if (it.find("-") == 0) {
-            return unexpected() << "Unknown option " << it;
+            return unexpected("Unknown option {}", it);
         } else {
             m_positionalArgs.push_back(it);
         }
