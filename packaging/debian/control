@@ -12,6 +12,7 @@ Priority: extra
 Package: fty-utils-dev
 Architecture: any
 Depends:
+  libfmt-dev
   ${shlibs:Depends},
   ${misc:Depends}
 Description: Single header library with severals tools
