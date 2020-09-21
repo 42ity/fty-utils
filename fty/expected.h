@@ -16,12 +16,12 @@
 #pragma once
 #include "convert.h"
 #include <cassert>
-#include <string>
 #include <fmt/format.h>
+#include <string>
 
 namespace fty {
 
-template<typename>
+template <typename>
 struct Unexpected;
 
 // ===========================================================================================================
@@ -35,9 +35,9 @@ public:
     constexpr Expected() = delete;
     constexpr Expected(const T& value) noexcept;
     constexpr Expected(T&& value) noexcept;
-    template<typename UnErrorT>
+    template <typename UnErrorT>
     constexpr Expected(Unexpected<UnErrorT>&& unex) noexcept;
-    template<typename UnErrorT>
+    template <typename UnErrorT>
     constexpr Expected(const Unexpected<UnErrorT>& unex) noexcept;
     ~Expected();
 
@@ -73,9 +73,9 @@ class Expected<void, ErrorT>
 {
 public:
     Expected() noexcept;
-    template<typename UnErrorT>
+    template <typename UnErrorT>
     Expected(Unexpected<UnErrorT>&& unex) noexcept;
-    template<typename UnErrorT>
+    template <typename UnErrorT>
     Expected(const Unexpected<UnErrorT>& unex) noexcept;
 
     Expected(const Expected&) = delete;
@@ -93,7 +93,7 @@ private:
 
 // ===========================================================================================================
 
-template<typename ErrorT = std::string>
+template <typename ErrorT = std::string>
 struct Unexpected
 {
     constexpr Unexpected(const ErrorT& value) noexcept;
@@ -102,25 +102,30 @@ struct Unexpected
 
 // ===========================================================================================================
 
-template<typename ErrorT>
+template <typename ErrorT>
 constexpr Unexpected<ErrorT>::Unexpected(const ErrorT& value) noexcept
     : message(value)
 {
 }
 
-template<typename ErrorT, typename=std::enable_if_t<!std::is_convertible_v<ErrorT, std::string>>>
+template <typename ErrorT, typename = std::enable_if_t<!std::is_convertible_v<ErrorT, std::string>>>
 inline Unexpected<ErrorT> unexpected(const ErrorT& error = {})
 {
     return Unexpected<ErrorT>(error);
 }
 
-template<typename... Args>
+template <typename... Args>
 inline Unexpected<std::string> unexpected(const std::string& fmt, const Args&... args)
 {
-    return {fmt::format(fmt, args...)};
+    try {
+        return {fmt::format(fmt, args...)};
+    } catch (const fmt::format_error&) {
+        assert("Format error");
+        return fmt;
+    }
 }
 
-template<typename ErrorT, typename=std::enable_if_t<std::is_convertible_v<ErrorT, std::string>>>
+template <typename ErrorT, typename = std::enable_if_t<std::is_convertible_v<ErrorT, std::string>>>
 inline Unexpected<std::string> unexpected(const ErrorT& value)
 {
     return {value};
@@ -141,7 +146,7 @@ constexpr Expected<T, ErrorT>::Expected(T&& value) noexcept
 }
 
 template <typename T, typename ErrorT>
-template<typename UnErrorT>
+template <typename UnErrorT>
 constexpr Expected<T, ErrorT>::Expected(Unexpected<UnErrorT>&& unex) noexcept
     : m_error(std::move(unex.message))
     , m_isError(true)
@@ -149,7 +154,7 @@ constexpr Expected<T, ErrorT>::Expected(Unexpected<UnErrorT>&& unex) noexcept
 }
 
 template <typename T, typename ErrorT>
-template<typename UnErrorT>
+template <typename UnErrorT>
 constexpr Expected<T, ErrorT>::Expected(const Unexpected<UnErrorT>& unex) noexcept
     : m_error(unex.message)
     , m_isError(true)
@@ -258,40 +263,40 @@ constexpr T* Expected<T, ErrorT>::operator->() noexcept
 
 // ===========================================================================================================
 
-template<typename ErrorT>
+template <typename ErrorT>
 inline Expected<void, ErrorT>::Expected() noexcept
 {
 }
 
-template<typename ErrorT>
-template<typename UnErrorT>
+template <typename ErrorT>
+template <typename UnErrorT>
 inline Expected<void, ErrorT>::Expected(Unexpected<UnErrorT>&& unex) noexcept
     : m_error(std::move(unex.message))
     , m_isError(true)
 {
 }
 
-template<typename ErrorT>
-template<typename UnErrorT>
+template <typename ErrorT>
+template <typename UnErrorT>
 inline Expected<void, ErrorT>::Expected(const Unexpected<UnErrorT>& unex) noexcept
     : m_error(unex.message)
     , m_isError(true)
 {
 }
 
-template<typename ErrorT>
+template <typename ErrorT>
 inline constexpr bool Expected<void, ErrorT>::isValid() const noexcept
 {
     return m_isError;
 }
 
-template<typename ErrorT>
+template <typename ErrorT>
 inline constexpr Expected<void, ErrorT>::operator bool() const noexcept
 {
     return !m_isError;
 }
 
-template<typename ErrorT>
+template <typename ErrorT>
 inline constexpr const ErrorT& Expected<void, ErrorT>::error() const& noexcept
 {
     return m_error;
