@@ -83,7 +83,7 @@ pipeline {
                     }
                 }
 
-                stage('Analyse with Coverity') {
+                /*stage('Analyse with Coverity') {
                     when {
                         beforeAgent true
                         anyOf {
@@ -139,12 +139,12 @@ pipeline {
                             recordIssues (
                                 enabledForFailure: true,
                                 aggregatingResults: true,
-                                qualityGates: [[threshold: 1, type: 'DELTA_ERROR', fail: true]],
-                                tools: [issues(name: "Coverity Analysis",pattern: '**/tmp_cov_dir/output/*.errors.json')]
-                            )
+                                qualityGates: [[threshold: 1, type: 'DELTA_ERROR', fail: true]],*/
+                                //tools: [issues(name: "Coverity Analysis",pattern: '**/tmp_cov_dir/output/*.errors.json')]
+                            /*)
                         }
                     }
-                }
+                }*/
             }
         }
 
