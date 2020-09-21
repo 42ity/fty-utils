@@ -22,6 +22,7 @@ etn_target(interface ${PROJECT_NAME}
         fty/event.h
         fty/thread-pool.h
         fty/flags.h
+        fty/process.h
     USES_PUBLIC
         fmt::fmt
 )
