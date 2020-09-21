@@ -7,6 +7,7 @@ etn_test(${PROJECT_NAME}-test
         convert.cpp
         expected.cpp
         events.cpp
+        process.cpp
     USES
         ${PROJECT_NAME}
         Catch2::Catch2

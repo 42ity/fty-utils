@@ -23,6 +23,8 @@ public:
     void interrupt();
     void kill();
 
+    bool exists();
+
 private:
     std::string              m_cmd;
     std::vector<std::string> m_args;
@@ -227,6 +229,11 @@ inline void Process::interrupt()
 inline void Process::kill()
 {
     ::kill(m_pid, SIGKILL);
+}
+
+inline bool Process::exists()
+{
+    ::kill(m_pid, 0) == 0;
 }
 
 // =====================================================================================================================
