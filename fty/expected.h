@@ -209,7 +209,7 @@ constexpr const ErrorT& Expected<T, ErrorT>::error() const& noexcept
 template <typename T, typename ErrorT>
 constexpr bool Expected<T, ErrorT>::isValid() const noexcept
 {
-    return m_isError;
+    return !m_isError;
 }
 
 template <typename T, typename ErrorT>
@@ -287,7 +287,7 @@ inline Expected<void, ErrorT>::Expected(const Unexpected<UnErrorT>& unex) noexce
 template <typename ErrorT>
 inline constexpr bool Expected<void, ErrorT>::isValid() const noexcept
 {
-    return m_isError;
+    return !m_isError;
 }
 
 template <typename ErrorT>

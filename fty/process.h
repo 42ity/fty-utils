@@ -224,16 +224,20 @@ inline void Process::setEnvVar(const std::string& name, const std::string& val)
 inline void Process::interrupt()
 {
     ::kill(m_pid, SIGINT);
+    int status;
+    waitpid(m_pid, &status, WUNTRACED | WCONTINUED);
 }
 
 inline void Process::kill()
 {
     ::kill(m_pid, SIGKILL);
+    int status;
+    waitpid(m_pid, &status, WUNTRACED | WCONTINUED);
 }
 
 inline bool Process::exists()
 {
-    return (::kill(m_pid, 0) == 0);
+    return ::kill(m_pid, 0) == 0;
 }
 
 // =====================================================================================================================

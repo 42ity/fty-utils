@@ -20,36 +20,36 @@ TEST_CASE("Process")
 {
     SECTION("Run process")
     {
-        auto process = fty::Process("/bin/echo", {"-n", "hello"});
+        auto process = fty::Process("echo", {"-n", "hello"});
 
         if (auto ret = process.run()) {
-            CHECK(process.readAllStandardOutput() == "hello");
             auto pid = process.wait();
+            CHECK(process.readAllStandardOutput() == "hello");
         } else {
             FAIL(ret.error());
         }
     }
-    
-    // SECTION("Std err")
-    // {
-    //     auto process = fty::Process("/bin/echo", {"-n", "hello", ">&2"});
 
-    //     if (auto ret = process.run()) {
-    //         CHECK(process.readAllStandardError() == "hello");
-    //         auto pid = process.wait();
-    //     } else {
-    //         FAIL(ret.error());
-    //     }
-    // }
-    
-    // SECTION("Run invalid process")
-    // {
-    //     auto process = fty::Process("/usr/bin/bad", {"-n", "hello"});
+    SECTION("Std err")
+    {
+        auto process = fty::Process("sh", {"-c", "1>&2 echo -n hello"});
 
-    //     auto pid = process.run();
+        if (auto ret = process.run()) {
+            auto pid = process.wait();
+            CHECK("hello" == process.readAllStandardError());
+        } else {
+            FAIL(ret.error());
+        }
+    }
 
-    //     CHECK(pid.isValid() == false);
-    // }
+    SECTION("Run invalid process")
+    {
+        auto process = fty::Process("/usr/bin/bad", {"-n", "hello"});
+        auto pid     = process.run();
+        CHECK(!pid.isValid());
+        CHECK(!pid);
+        CHECK("posix_spawnp failed with error: No such file or directory" == pid.error());
+    }
 
     SECTION("Set environment variable")
     {
@@ -58,10 +58,9 @@ TEST_CASE("Process")
 
         if (auto pid = process.run()) {
             CHECK(process.readAllStandardOutput() == "export MYVAR='test-value'\n");
-            auto status = process.wait(100);
 
-            if(status.isValid()) {
-                CHECK(status == 0);
+            if (auto status = process.wait()) {
+                CHECK(*status == 0);
             } else {
                 FAIL(status.error());
             }
@@ -76,14 +75,10 @@ TEST_CASE("Process")
 
         if (auto pid = process.run()) {
             auto status = process.wait(100);
-
-            if(status.isValid() == true) {
-                CHECK(status == 0);
-                process.kill();
-                CHECK(!process.exists());
-            } else {
-                FAIL(status.error());
-            }
+            CHECK(!status);
+            CHECK("timeout" == status.error());
+            process.kill();
+            CHECK(!process.exists());
         } else {
             FAIL(pid.error());
         }
@@ -95,16 +90,11 @@ TEST_CASE("Process")
 
         if (auto pid = process.run()) {
             auto status = process.wait(100);
-            if(status.isValid() == true) {
-                CHECK(status == 0);
-                process.interrupt();
-                CHECK(!process.exists());
-            } else {
-                FAIL(status.error());
-            }
+            CHECK(!status);
+            process.interrupt();
+            CHECK(!process.exists());
         } else {
             FAIL(pid.error());
         }
     }
 }
-
