@@ -13,12 +13,15 @@ class Process
 {
 public:
     Process(const std::string& cmd, const std::vector<std::string>& args = {});
+    ~Process();
+
     Expected<pid_t> run();
     Expected<int>   wait(int milliseconds = -1);
 
     std::string readAllStandardError();
     std::string readAllStandardOutput();
     void        setEnvVar(const std::string& name, const std::string& val);
+    void        addArgument(const std::string& arg);
 
     void interrupt();
     void kill();
@@ -94,6 +97,14 @@ inline Process::Process(const std::string& cmd, const std::vector<std::string>& 
     }
 }
 
+inline Process::~Process()
+{
+    if (m_pid) {
+        kill();
+        assert(true && "Process was running, killed...");
+    }
+}
+
 inline Expected<pid_t> Process::run()
 {
     int coutPipe[2];
@@ -146,13 +157,13 @@ inline Expected<int> Process::wait(int milliseconds)
         }
 
         timespec ts;
-        ts.tv_sec       = milliseconds / 1000;
-        ts.tv_nsec      = (milliseconds % 1000) * 1000000;
+        ts.tv_sec  = milliseconds / 1000;
+        ts.tv_nsec = (milliseconds % 1000) * 1000000;
 
         int res;
         do {
             res = sigtimedwait(&childMask, nullptr, &ts);
-        } while(res == -1 && errno == EINTR);
+        } while (res == -1 && errno == EINTR);
 
         if (res == -1 && errno == EAGAIN) {
             return unexpected("timeout");
@@ -172,6 +183,7 @@ inline Expected<int> Process::wait(int milliseconds)
                 return unexpected("waitpid failed: {}", strerror(errno));
             }
         }
+        m_pid = 0;
         return status;
     }
 
@@ -179,6 +191,7 @@ inline Expected<int> Process::wait(int milliseconds)
         if (auto res = waitpid(m_pid, &status, WUNTRACED | WCONTINUED); res == -1) {
             return unexpected("waitpid");
         }
+        m_pid = 0;
 
         if (WIFEXITED(status)) {
             return WEXITSTATUS(status);
@@ -220,19 +233,30 @@ inline void Process::setEnvVar(const std::string& name, const std::string& val)
     m_environ.push_back(fmt::format("{}={}", name, val));
 }
 
+inline void Process::addArgument(const std::string& arg)
+{
+    m_args.push_back(arg);
+}
+
 
 inline void Process::interrupt()
 {
-    ::kill(m_pid, SIGINT);
-    int status;
-    waitpid(m_pid, &status, WUNTRACED | WCONTINUED);
+    if (m_pid) {
+        ::kill(m_pid, SIGINT);
+        int status;
+        waitpid(m_pid, &status, WUNTRACED | WCONTINUED);
+        m_pid = 0;
+    }
 }
 
 inline void Process::kill()
 {
-    ::kill(m_pid, SIGKILL);
-    int status;
-    waitpid(m_pid, &status, WUNTRACED | WCONTINUED);
+    if (m_pid) {
+        ::kill(m_pid, SIGKILL);
+        int status;
+        waitpid(m_pid, &status, WUNTRACED | WCONTINUED);
+        m_pid = 0;
+    }
 }
 
 inline bool Process::exists()
