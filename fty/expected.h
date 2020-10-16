@@ -17,6 +17,7 @@
 #include "convert.h"
 #include <cassert>
 #include <fmt/format.h>
+#include <optional>
 #include <string>
 
 namespace fty {
@@ -87,8 +88,8 @@ public:
     constexpr const ErrorT& error() const& noexcept;
 
 private:
-    ErrorT m_error   = {};
-    bool   m_isError = false;
+    std::optional<ErrorT> m_error;
+    bool                  m_isError = false;
 };
 
 // ===========================================================================================================
@@ -299,7 +300,8 @@ inline constexpr Expected<void, ErrorT>::operator bool() const noexcept
 template <typename ErrorT>
 inline constexpr const ErrorT& Expected<void, ErrorT>::error() const& noexcept
 {
-    return m_error;
+    assert(m_error != std::nullopt);
+    return *m_error;
 }
 
 // ===========================================================================================================

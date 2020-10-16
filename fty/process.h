@@ -191,13 +191,15 @@ inline Expected<int> Process::wait(int milliseconds)
         if (auto res = waitpid(m_pid, &status, WUNTRACED | WCONTINUED); res == -1) {
             return unexpected("waitpid");
         }
-        m_pid = 0;
 
         if (WIFEXITED(status)) {
+            m_pid = 0;
             return WEXITSTATUS(status);
         } else if (WIFSIGNALED(status)) {
+            m_pid = 0;
             return WTERMSIG(status);
         } else if (WIFSTOPPED(status)) {
+            m_pid = 0;
             return WSTOPSIG(status);
         }
     } while (!WIFEXITED(status) && !WIFSIGNALED(status));
@@ -244,7 +246,9 @@ inline void Process::interrupt()
     if (m_pid) {
         ::kill(m_pid, SIGINT);
         int status;
-        waitpid(m_pid, &status, WUNTRACED | WCONTINUED);
+        do {
+            waitpid(m_pid, &status, WUNTRACED | WCONTINUED);
+        } while (!WIFEXITED(status) && !WIFSIGNALED(status) && !WIFSTOPPED(status) && !WCOREDUMP(status));
         m_pid = 0;
     }
 }
@@ -254,14 +258,19 @@ inline void Process::kill()
     if (m_pid) {
         ::kill(m_pid, SIGKILL);
         int status;
-        waitpid(m_pid, &status, WUNTRACED | WCONTINUED);
+        do {
+            waitpid(m_pid, &status, WUNTRACED | WCONTINUED);
+        } while (!WIFEXITED(status) && !WIFSIGNALED(status) && !WIFSTOPPED(status) && !WCOREDUMP(status));
         m_pid = 0;
     }
 }
 
 inline bool Process::exists()
 {
-    return ::kill(m_pid, 0) == 0;
+    if (m_pid) {
+        return ::kill(m_pid, 0) == 0;
+    }
+    return false;
 }
 
 // =====================================================================================================================
