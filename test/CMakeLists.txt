@@ -14,3 +14,5 @@ etn_test(${PROJECT_NAME}-test
         Catch2::Catch2
         pthread
 )
+
+etn_coverage(${PROJECT_NAME}-test)
