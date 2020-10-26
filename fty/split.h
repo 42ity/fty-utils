@@ -192,4 +192,19 @@ std::string implode(const Cnt& cnt, const std::string& delim)
     return ss.str();
 }
 
+template <typename Cnt, typename Func>
+std::string implode(const Cnt& cnt, const std::string& delim, Func&& fnc)
+{
+    bool              first = true;
+    std::stringstream ss;
+    for (const auto& it : cnt) {
+        if (!first) {
+            ss << delim;
+        }
+        first = false;
+        ss << fnc(it);
+    }
+    return ss.str();
+}
+
 } // namespace fty
