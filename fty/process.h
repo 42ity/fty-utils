@@ -68,7 +68,8 @@ public:
     void add(const std::string& str)
     {
         char* s = new char[str.size() + 1];
-        strcpy(s, str.c_str());
+        memset(s, 0, str.size() + 1);
+        strncpy(s, str.c_str(), str.size());
         m_data.push_back(s);
     }
 
