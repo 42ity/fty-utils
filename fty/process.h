@@ -233,7 +233,10 @@ inline std::string Process::readAllStandardError()
 
 inline void Process::setEnvVar(const std::string& name, const std::string& val)
 {
-    m_environ.push_back(fmt::format("{}={}", name, val));
+    try {
+        m_environ.push_back(fmt::format("{}={}", name, val));
+    } catch (const fmt::format_error& ) {
+    }
 }
 
 inline void Process::addArgument(const std::string& arg)

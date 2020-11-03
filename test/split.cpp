@@ -23,7 +23,8 @@ TEST_CASE("Split utils")
     {
         auto vec = fty::split("It's dead, that's what's wrong with it.", " ");
         CHECK(std::vector<std::string>{"It's", "dead,", "that's", "what's", "wrong", "with", "it."} == vec);
-        CHECK(fty::split("", ";").empty());
+        auto res = fty::split("", ";");
+        CHECK(res.empty());
     }
 
     SECTION("Vector, skip empty")
@@ -49,10 +50,15 @@ TEST_CASE("Split utils")
 
     SECTION("Vector, split regex")
     {
-        static std::regex re(",+");
-        auto              vec = fty::split("this,,is,,,,an,,,ex-parrot", re, fty::SplitOption::KeepEmpty);
-        CHECK(std::vector<std::string>{"this", "is", "an", "ex-parrot"} == vec);
-        CHECK(fty::split("", re).empty());
+        try {
+            static std::regex re(",+");
+            auto              vec = fty::split("this,,is,,,,an,,,ex-parrot", re, fty::SplitOption::KeepEmpty);
+            CHECK(std::vector<std::string>{"this", "is", "an", "ex-parrot"} == vec);
+            auto res = fty::split("", re);
+            CHECK(res.empty());
+        } catch (const std::regex_error& e) {
+            FAIL(e.what());
+        }
     }
 
     SECTION("Tuple")
@@ -76,26 +82,34 @@ TEST_CASE("Split utils")
 
     SECTION("Tuple, regex")
     {
-        static std::regex re("=+");
+        try {
+            static std::regex re("=+");
 
-        auto tuple = fty::split<std::string, int>("sense of life === 42", re);
-        CHECK(std::make_tuple("sense of life", 42) == tuple);
-        auto [name, val] = tuple;
-        CHECK("sense of life" == name);
-        CHECK(42 == val);
+            auto tuple = fty::split<std::string, int>("sense of life === 42", re);
+            CHECK(std::make_tuple("sense of life", 42) == tuple);
+            auto [name, val] = tuple;
+            CHECK("sense of life" == name);
+            CHECK(42 == val);
 
-        auto tuple2 = fty::split<std::string, int>("sense of life", re);
-        CHECK(std::make_tuple("sense of life", 0) == tuple2);
+            auto tuple2 = fty::split<std::string, int>("sense of life", re);
+            CHECK(std::make_tuple("sense of life", 0) == tuple2);
 
-        auto tuple3 = fty::split<std::string, int>("sense of life = 42 === 66", re);
-        CHECK(std::make_tuple("sense of life", 42) == tuple3);
+            auto tuple3 = fty::split<std::string, int>("sense of life = 42 === 66", re);
+            CHECK(std::make_tuple("sense of life", 42) == tuple3);
+        } catch (const std::regex_error& e) {
+            FAIL(e.what());
+        }
     }
 }
 
 TEST_CASE("Strange split")
 {
-    static std::regex re("([a-zA-Z0-9]+)\\s*=\\s*\"([^\"]+)\"");
-    auto [key, value] = fty::split<std::string, std::string>("key = \"value\"", re);
-    CHECK("key" == key);
-    CHECK("value" == value);
+    try {
+        static std::regex re("([a-zA-Z0-9]+)\\s*=\\s*\"([^\"]+)\"");
+        auto [key, value] = fty::split<std::string, std::string>("key = \"value\"", re);
+        CHECK("key" == key);
+        CHECK("value" == value);
+    } catch (const std::regex_error& e) {
+        FAIL(e.what());
+    }
 }
