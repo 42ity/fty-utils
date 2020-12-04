@@ -58,7 +58,7 @@ public:
     template <typename... Args>
     Translate& format(const Args&... args)
     {
-        m_format = [&](const std::string& msg) {
+        m_format = [=](const std::string& msg) {
             return fmt::format(translate(msg), args...);
         };
         return *this;
