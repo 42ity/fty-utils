@@ -206,7 +206,6 @@ void CommandLine::Option::setOneOfMany(const std::vector<std::string> values)
 void CommandLine::Option::setValue(const std::string& str)
 {
     if (m_oneOfMany.size()) {
-        std::cerr << "one of many" << std::endl;
         auto it = std::find(m_oneOfMany.begin(), m_oneOfMany.end(), str);
         if (it == m_oneOfMany.end()) {
             std::stringstream ss;
