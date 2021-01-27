@@ -144,13 +144,15 @@ void CommandLine::Option::consume(std::vector<std::string>& args)
         const std::string& arg = *it;
 
         if (!m_format.longFormat.empty() && arg.find(m_format.longFormat) == 0) {
-            auto pos = arg.find("=");
             if (isBoolOpt()) {
                 m_option.setter("");
-            } else if (pos == std::string::npos) {
-                throw std::runtime_error("Wrong format of option " + arg);
+            } else {
+                auto pos = arg.find("=");
+                if (pos == std::string::npos) {
+                    throw std::runtime_error("Wrong format of option " + arg);
+                }
+                setValue(arg.substr(pos + 1));
             }
-            setValue(arg.substr(pos + 1));
             args.erase(it);
         }
         if (arg == m_format.shortFormat) {
