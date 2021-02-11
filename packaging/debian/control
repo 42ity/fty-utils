@@ -9,10 +9,12 @@ Standards-Version: 1.0.0
 Section: devel
 Priority: extra
 
-Package: fty-utils-dev
+Package: libfty-utils-dev
 Architecture: any
+Provides: fty-utils-dev
 Depends:
   libfmt-dev
   ${shlibs:Depends},
   ${misc:Depends}
 Description: Single header library with severals tools
+ Note the historic misnomer "fty-utils-dev" is an alias for this package
