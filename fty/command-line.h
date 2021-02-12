@@ -148,18 +148,18 @@ void CommandLine::Option::consume(std::vector<std::string>& args)
             if(arg == m_format.longFormat || arg == m_format.shortFormat) {
                 if (isBoolOpt()) {
                     m_option.setter("");
-                    args.erase(it);
                 } else {
                     if (it + 1 != args.end()) {
                         setValue(*(it + 1));
                         args.erase(it + 1);
-                        args.erase(it);
                     } else {
                         throw std::runtime_error("Wrong format of option " + arg);
                     }
                 }
             }
         }
+
+        args.erase(it);
     }
 }
 
