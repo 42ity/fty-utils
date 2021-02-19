@@ -23,6 +23,29 @@
 
 namespace fty {
 
+namespace details {
+    template <typename T>
+    struct Types
+    {
+        using Type = std::decay_t<T>;
+    };
+
+    template <int N>
+    struct Types<char[N]>
+    {
+        using Type = std::string;
+    };
+
+    template <>
+    struct Types<const char*>
+    {
+        using Type = std::string;
+    };
+
+    template <typename T>
+    using UseType = typename Types<T>::Type;
+} // namespace details
+
 /// Translation message storage and formater.
 /// Typical usage is:
 ///     Translate("parrot: {} {}").format("norwegian", "blue").toString()
@@ -58,8 +81,13 @@ public:
     template <typename... Args>
     Translate& format(const Args&... args)
     {
-        m_format = [=](const std::string& msg) {
-            return fmt::format(translate(msg), args...);
+        m_format = [this, copy = std::tuple<details::UseType<Args>...>(args...)](const std::string& msg) {
+            auto tomove = copy;
+            return std::apply(
+                [&](auto&&... targs) {
+                    return fmt::format(translate(msg), std::move(targs)...);
+                },
+                tomove);
         };
         return *this;
     }
