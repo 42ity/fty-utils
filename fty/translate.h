@@ -30,7 +30,7 @@ namespace details {
         using Type = std::decay_t<T>;
     };
 
-    template <int N>
+    template <size_t N>
     struct Types<char[N]>
     {
         using Type = std::string;
