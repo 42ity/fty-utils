@@ -1,6 +1,7 @@
 #include <catch2/catch.hpp>
 #include "fty/translate.h"
 #include <sstream>
+#include <iostream>
 
 TEST_CASE("Translate/simple")
 {
@@ -69,4 +70,23 @@ TEST_CASE("Translate/translate")
     }
 }
 
+TEST_CASE("Translate/lifetime")
+{
+    {
+        fty::Translate trans("parrot is {}");
+        {
+            std::string val("dead");
+            trans.format(val);
+        }
+        CHECK("parrot is dead" == trans.toString());
+    }
+    {
+        fty::Translate trans("parrot is {}");
+        {
+            std::string val("dead");
+            trans.format(val.c_str());
+        }
+        CHECK("parrot is dead" == trans.toString());
+    }
+}
 
