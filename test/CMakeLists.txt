@@ -1,6 +1,6 @@
 include(CTest)
 
-etn_test(${PROJECT_NAME}-test
+etn_test_target(${PROJECT_NAME}
     SOURCES
         main.cpp
         split.cpp
@@ -10,9 +10,6 @@ etn_test(${PROJECT_NAME}-test
         process.cpp
         translate.cpp
     USES
-        ${PROJECT_NAME}
-        Catch2::Catch2
         pthread
 )
 
-etn_coverage(${PROJECT_NAME}-test)
