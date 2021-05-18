@@ -20,6 +20,7 @@ public:
 
     std::string readAllStandardError();
     std::string readAllStandardOutput();
+    bool        write(const std::string& cmd);
     void        setEnvVar(const std::string& name, const std::string& val);
     void        addArgument(const std::string& arg);
 
@@ -35,6 +36,7 @@ private:
     pid_t                    m_pid    = 0;
     int                      m_stdout = 0;
     int                      m_stderr = 0;
+    int                      m_stdin  = 0;
 };
 
 // =====================================================================================================================
@@ -110,20 +112,26 @@ inline Expected<pid_t> Process::run()
 {
     int coutPipe[2];
     int cerrPipe[2];
+    int cinPipe[2];
 
-    if (pipe(coutPipe) || pipe(cerrPipe)) {
+    if (pipe(coutPipe) || pipe(cerrPipe) || pipe(cinPipe)) {
         return unexpected("pipe returned an error");
     }
 
     posix_spawn_file_actions_t action;
     posix_spawn_file_actions_init(&action);
+
     posix_spawn_file_actions_addclose(&action, coutPipe[0]);
     posix_spawn_file_actions_addclose(&action, cerrPipe[0]);
+    posix_spawn_file_actions_addclose(&action, cinPipe[1]);
+
     posix_spawn_file_actions_adddup2(&action, coutPipe[1], STDOUT_FILENO);
     posix_spawn_file_actions_adddup2(&action, cerrPipe[1], STDERR_FILENO);
+    posix_spawn_file_actions_adddup2(&action, cinPipe[0], STDIN_FILENO);
 
     posix_spawn_file_actions_addclose(&action, coutPipe[1]);
     posix_spawn_file_actions_addclose(&action, cerrPipe[1]);
+    posix_spawn_file_actions_addclose(&action, cinPipe[1]);
 
     CharArray args(m_cmd, m_args);
     CharArray env(m_environ);
@@ -132,15 +140,17 @@ inline Expected<pid_t> Process::run()
         return unexpected("posix_spawnp failed with error: {}", strerror(errno));
     }
 
-    if (auto res = posix_spawn_file_actions_destroy(&action)) {
+    if (posix_spawn_file_actions_destroy(&action)) {
         return unexpected("posix_spawn_file_actions_destroy");
     }
 
     close(coutPipe[1]);
     close(cerrPipe[1]);
+    close(cinPipe[0]);
 
     m_stdout = coutPipe[0];
     m_stderr = cerrPipe[0];
+    m_stdin  = cinPipe[1];
 
     return m_pid;
 }
@@ -229,6 +239,14 @@ inline std::string Process::readAllStandardError()
         output += std::string(buffer.data(), size_t(bytesRead));
     }
     return output;
+}
+
+inline bool Process::write(const std::string& cmd)
+{
+    auto ret = ::write(m_stdin, cmd.c_str(), cmd.size());
+    close(m_stdin);
+    m_stdin = 0;
+    return ret == ssize_t(cmd.size());
 }
 
 inline void Process::setEnvVar(const std::string& name, const std::string& val)
