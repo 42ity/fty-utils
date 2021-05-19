@@ -30,7 +30,7 @@ BinPackParameters: true
 BreakBeforeBinaryOperators: None
 BreakBeforeBraces: Attach
 BreakBeforeTernaryOperators: true
-ColumnLimit: 110
+ColumnLimit: 120
 BreakConstructorInitializers: BeforeComma
 ConstructorInitializerAllOnOneLineOrOnePerLine: false
 CommentPragmas:  '^ IWYU pragma:'

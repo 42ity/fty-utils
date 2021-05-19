@@ -109,4 +109,24 @@ TEST_CASE("Process")
             FAIL(pid.error());
         }
     }
+
+    SECTION("Run process static")
+    {
+        std::string out, err;
+        auto ret = fty::Process::run("echo", {"-n", "hello out"}, out);
+        REQUIRE(ret);
+        CHECK(*ret == 0);
+        CHECK(out == "hello out");
+
+        auto ret2 = fty::Process::run("sh", {"-c", "1>&2 echo -n hello err"}, out, err);
+        REQUIRE(ret2);
+        CHECK(*ret2 == 0);
+        CHECK(out == "");
+        CHECK(err == "hello err");
+
+        auto ret3 = fty::Process::run("echo", {"-n", "hello"});
+        REQUIRE(ret2);
+        CHECK(*ret2 == 0);
+    }
+
 }
