@@ -14,7 +14,7 @@
     ========================================================================
 */
 #include "fty/process.h"
-#include "fty/split.h"
+#include "fty/string-utils.h"
 #include <catch2/catch.hpp>
 
 TEST_CASE("Process")

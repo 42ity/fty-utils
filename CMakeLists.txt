@@ -16,7 +16,7 @@ etn_target(interface ${PROJECT_NAME}
     PUBLIC
         fty/command-line.h
         fty/convert.h
-        fty/split.h
+        fty/string-utils.h
         fty/traits.h
         fty/expected.h
         fty/event.h

@@ -168,3 +168,17 @@ struct fmt::formatter<fty::Translate>
         return fmt::format_to(ctx.out(), "{}", trans.toString());
     }
 };
+
+// =====================================================================================================================
+
+namespace fty::logger {
+
+template<typename... Args>
+inline std::string format(Translate& trans, const Args&... args)
+{
+    return trans.format(args...).toString();
+}
+
+}
+
+// =====================================================================================================================
