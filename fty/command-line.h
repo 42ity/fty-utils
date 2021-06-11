@@ -17,7 +17,7 @@
 
 #include "convert.h"
 #include "expected.h"
-#include "split.h"
+#include "fty/string-utils.h"
 #include <functional>
 #include <memory>
 #include <sstream>
