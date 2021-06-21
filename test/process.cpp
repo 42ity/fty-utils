@@ -14,8 +14,8 @@
     ========================================================================
 */
 #include "fty/process.h"
+#include "fty/string-utils.h"
 #include <catch2/catch.hpp>
-#include <iostream>
 
 TEST_CASE("Process")
 {
@@ -70,32 +70,63 @@ TEST_CASE("Process")
         }
     }
 
-//    SECTION("Kill process")
-//    {
-//        auto process = fty::Process("sh", {});
+    SECTION("Write process")
+    {
+        auto process = fty::Process("sh");
+        auto pid     = process.run();
+        CHECK(pid.isValid());
+        CHECK(pid);
+        CHECK(process.write("echo hello"));
+        CHECK("hello" == fty::trimmed(process.readAllStandardOutput()));
+    }
 
-//        if (auto pid = process.run()) {
-//            auto status = process.wait(10);
-//            CHECK(!status);
-//            CHECK("timeout" == status.error());
-//            process.kill();
-//            CHECK(!process.exists());
-//        } else {
-//            FAIL(pid.error());
-//        }
-//    }
 
-//    SECTION("Interrupt process")
-//    {
-//        auto process = fty::Process("/bin/cat", {});
+    SECTION("Kill process")
+    {
+        auto process = fty::Process("sh", {});
 
-//        if (auto pid = process.run()) {
-//            auto status = process.wait(100);
-//            CHECK(!status);
-//            process.interrupt();
-//            CHECK(!process.exists());
-//        } else {
-//            FAIL(pid.error());
-//        }
-//    }
+        if (auto pid = process.run()) {
+            auto status = process.wait(10);
+            CHECK(!status);
+            CHECK("timeout" == status.error());
+            process.kill();
+            CHECK(!process.exists());
+        } else {
+            FAIL(pid.error());
+        }
+    }
+
+    SECTION("Interrupt process")
+    {
+        auto process = fty::Process("/bin/cat", {});
+
+        if (auto pid = process.run()) {
+            auto status = process.wait(100);
+            CHECK(!status);
+            process.interrupt();
+            CHECK(!process.exists());
+        } else {
+            FAIL(pid.error());
+        }
+    }
+
+    SECTION("Run process static")
+    {
+        std::string out, err;
+        auto ret = fty::Process::run("echo", {"-n", "hello out"}, out);
+        REQUIRE(ret);
+        CHECK(*ret == 0);
+        CHECK(out == "hello out");
+
+        auto ret2 = fty::Process::run("sh", {"-c", "1>&2 echo -n hello err"}, out, err);
+        REQUIRE(ret2);
+        CHECK(*ret2 == 0);
+        CHECK(out == "");
+        CHECK(err == "hello err");
+
+        auto ret3 = fty::Process::run("echo", {"-n", "hello"});
+        REQUIRE(ret2);
+        CHECK(*ret2 == 0);
+    }
+
 }

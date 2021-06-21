@@ -13,7 +13,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
     ========================================================================
 */
-#include "fty/split.h"
+#include "fty/string-utils.h"
 #include <catch2/catch.hpp>
 
 

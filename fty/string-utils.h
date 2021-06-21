@@ -52,8 +52,8 @@ std::string trimmed(const std::string& str);
 /// @param str string to split
 /// @param delim delimeter to split
 /// @param opt split options
-std::vector<std::string> split(const std::string& str, const std::string& delim,
-    SplitOption opt = SplitOption::SkipEmpty | SplitOption::Trim);
+std::vector<std::string> split(
+    const std::string& str, const std::string& delim, SplitOption opt = SplitOption::SkipEmpty | SplitOption::Trim);
 
 /// Splits the string into substrings wherever the regular expression @ref delim matches, and returns the list
 /// of those strings. If @ref delim does not match anywhere in the string, split() returns a single-element
@@ -61,8 +61,8 @@ std::vector<std::string> split(const std::string& str, const std::string& delim,
 /// @param str string to split
 /// @param delim regular expression to split
 /// @param opt split options
-std::vector<std::string> split(const std::string& str, const std::regex& delim,
-    SplitOption opt = SplitOption::SkipEmpty | SplitOption::Trim);
+std::vector<std::string> split(
+    const std::string& str, const std::regex& delim, SplitOption opt = SplitOption::SkipEmpty | SplitOption::Trim);
 
 /// Splits the string into typed tuple wherever the @ref delim occurs matches. In case if split will produce
 /// less values then tuple size then will contain default values. If split will produce more values, unused
@@ -71,8 +71,8 @@ std::vector<std::string> split(const std::string& str, const std::regex& delim,
 /// @param delim regular expression to split
 /// @param opt split options
 template <typename... T>
-std::tuple<T...> split(const std::string& str, const std::string& delim,
-    SplitOption opt = SplitOption::KeepEmpty | SplitOption::Trim);
+std::tuple<T...> split(
+    const std::string& str, const std::string& delim, SplitOption opt = SplitOption::KeepEmpty | SplitOption::Trim);
 
 /// Splits the string into typed tuple wherever the regular expression @ref delim occurs matches. In case if
 /// split will produce less values then tuple size then will contain default values. If split will produce
@@ -81,8 +81,16 @@ std::tuple<T...> split(const std::string& str, const std::string& delim,
 /// @param delim regular expression to split
 /// @param opt split options
 template <typename... T>
-std::tuple<T...> split(const std::string& str, const std::regex& delim,
-    SplitOption opt = SplitOption::KeepEmpty | SplitOption::Trim);
+std::tuple<T...> split(
+    const std::string& str, const std::regex& delim, SplitOption opt = SplitOption::KeepEmpty | SplitOption::Trim);
+
+/// Converts string to upper case
+/// @param str string to convert
+void toupper(std::string& src);
+
+/// Converts string to lower case
+/// @param str string to convert
+void tolower(std::string& src);
 
 // ===========================================================================================================
 
@@ -144,7 +152,7 @@ inline std::vector<std::string> split(const std::string& str, const std::string&
 
 inline std::vector<std::string> split(const std::string& str, const std::regex& delim, SplitOption opt)
 {
-    std::vector<std::string>   ret;
+    std::vector<std::string> ret;
     if (!delim.mark_count()) {
         std::sregex_token_iterator iter(str.begin(), str.end(), delim, -1);
         std::sregex_token_iterator end;
@@ -153,7 +161,7 @@ inline std::vector<std::string> split(const std::string& str, const std::regex& 
         }
     } else {
         std::vector<int> submatches;
-        for(size_t i = 1; i <= delim.mark_count(); ++i) {
+        for (size_t i = 1; i <= delim.mark_count(); ++i) {
             submatches.push_back(int(i));
         }
         std::sregex_token_iterator iter(str.begin(), str.end(), delim, submatches);
@@ -206,5 +214,26 @@ std::string implode(const Cnt& cnt, const std::string& delim, Func&& fnc)
     }
     return ss.str();
 }
+
+inline void toupper(std::string& src)
+{
+    std::locale locale;
+    auto        toUpper = [&locale](char ch) {
+        return std::use_facet<std::ctype<char>>(locale).toupper(ch);
+    };
+
+    std::transform(src.begin(), src.end(), src.begin(), toUpper);
+}
+
+inline void tolower(std::string& src)
+{
+    std::locale locale;
+    auto        toLower = [&locale](char ch) {
+        return std::use_facet<std::ctype<char>>(locale).tolower(ch);
+    };
+
+    std::transform(src.begin(), src.end(), src.begin(), toLower);
+}
+
 
 } // namespace fty
