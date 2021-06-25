@@ -77,6 +77,7 @@ TEST_CASE("Process")
         CHECK(pid.isValid());
         CHECK(pid);
         CHECK(process.write("echo hello"));
+        process.closeWriteChannel();
         CHECK("hello" == fty::trimmed(process.readAllStandardOutput()));
     }
 
@@ -130,3 +131,16 @@ TEST_CASE("Process")
     }
 
 }
+
+TEST_CASE("Write process 2")
+{
+    auto process = fty::Process("/bin/cat");
+    auto pid     = process.run();
+    CHECK(pid.isValid());
+    CHECK(pid);
+    CHECK(process.write("hello\n"));
+    CHECK("hello" == fty::trimmed(process.readAllStandardOutput()));
+    CHECK(process.write("hello2\n"));
+    CHECK("hello2" == fty::trimmed(process.readAllStandardOutput()));
+}
+

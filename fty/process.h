@@ -1,4 +1,5 @@
 #pragma once
+#include <fcntl.h>
 #include <fty/expected.h>
 #include <fty/flags.h>
 #include <spawn.h>
@@ -8,7 +9,7 @@
 
 namespace fty {
 
-// =====================================================================================================================
+// =========================================================================================================================================
 
 enum class Capture
 {
@@ -23,8 +24,7 @@ class Process
 {
 public:
     using Arguments = std::vector<std::string>;
-    Process(const std::string& cmd, const Arguments& args = {},
-        Capture capture = Capture::Out | Capture::Err | Capture::In);
+    Process(const std::string& cmd, const Arguments& args = {}, Capture capture = Capture::Out | Capture::Err | Capture::In);
     ~Process();
 
     Expected<pid_t> run();
@@ -33,6 +33,7 @@ public:
     std::string readAllStandardError();
     std::string readAllStandardOutput();
     bool        write(const std::string& cmd);
+    void        closeWriteChannel();
     void        setEnvVar(const std::string& name, const std::string& val);
     void        addArgument(const std::string& arg);
 
@@ -57,7 +58,7 @@ private:
     int                      m_stdin  = 0;
 };
 
-// =====================================================================================================================
+// =========================================================================================================================================
 
 class CharArray
 {
@@ -255,7 +256,26 @@ inline std::string Process::readAllStandardOutput()
     std::array<char, 1024> buffer;
     std::string            output;
 
+    buffer.fill(0);
+
+    int o_flags = fcntl(m_stdout, F_GETFL);
+    int n_flags = o_flags | O_NONBLOCK;
+    fcntl(m_stdout, F_SETFL, n_flags);
+
+    errno        = 0;
+    int     exit = 0;
     ssize_t bytesRead;
+
+    while ((bytesRead = read(m_stdout, buffer.data(), buffer.size())) <= 0 && (errno == EAGAIN) && exit < 5000) {
+        usleep(1000);
+        errno = 0;
+        exit++;
+    }
+
+    if (bytesRead > 0) {
+        output = std::string(buffer.data(), size_t(bytesRead));
+    }
+
     while ((bytesRead = read(m_stdout, &buffer[0], buffer.size())) > 0) {
         output += std::string(buffer.data(), size_t(bytesRead));
     }
@@ -277,9 +297,13 @@ inline std::string Process::readAllStandardError()
 inline bool Process::write(const std::string& cmd)
 {
     auto ret = ::write(m_stdin, cmd.c_str(), cmd.size());
+    return ret == ssize_t(cmd.size());
+}
+
+inline void Process::closeWriteChannel()
+{
     close(m_stdin);
     m_stdin = 0;
-    return ret == ssize_t(cmd.size());
 }
 
 inline void Process::setEnvVar(const std::string& name, const std::string& val)
@@ -374,5 +398,5 @@ inline Expected<int> Process::run(const std::string& cmd, const Arguments& args)
 }
 
 
-// =====================================================================================================================
+// =========================================================================================================================================
 } // namespace fty
