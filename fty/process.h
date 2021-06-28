@@ -122,6 +122,9 @@ inline Process::Process(const std::string& cmd, const Arguments& args, Capture c
 
 inline Process::~Process()
 {
+    if (m_stdin) {
+        closeWriteChannel();
+    }
     if (m_pid) {
         kill();
         assert(true && "Process was running, killed...");
