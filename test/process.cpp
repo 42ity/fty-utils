@@ -84,7 +84,7 @@ TEST_CASE("Process")
 
     SECTION("Kill process")
     {
-        auto process = fty::Process("sh", {});
+        auto process = fty::Process("sh", {"-c", "sleep 1000"});
 
         if (auto pid = process.run()) {
             auto status = process.wait(10);

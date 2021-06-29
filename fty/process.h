@@ -194,6 +194,7 @@ inline Expected<pid_t> Process::run()
 
 inline Expected<int> Process::wait(int milliseconds)
 {
+    closeWriteChannel();
     int status = 0;
     if (milliseconds >= 0) {
         sigset_t childMask, oldMask;
