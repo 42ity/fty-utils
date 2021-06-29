@@ -2,6 +2,8 @@
 #include <fcntl.h>
 #include <fty/expected.h>
 #include <fty/flags.h>
+#include <iostream>
+#include <poll.h>
 #include <spawn.h>
 #include <unistd.h>
 #include <vector>
@@ -255,47 +257,46 @@ inline Expected<int> Process::wait(int milliseconds)
     return unexpected("something wrong");
 }
 
-inline std::string Process::readAllStandardOutput()
+inline std::string readFromFd(int fd)
 {
     std::array<char, 1024> buffer;
     std::string            output;
 
-    buffer.fill(0);
+    struct timeval tv {1, 0};
 
-    int o_flags = fcntl(m_stdout, F_GETFL);
-    int n_flags = o_flags | O_NONBLOCK;
-    fcntl(m_stdout, F_SETFL, n_flags);
+    fd_set readSet;
+    FD_ZERO(&readSet);
+    FD_SET(fd, &readSet);
 
-    errno        = 0;
-    int     exit = 0;
-    ssize_t bytesRead;
-
-    while ((bytesRead = read(m_stdout, buffer.data(), buffer.size())) <= 0 && (errno == EAGAIN) && exit < 5000) {
-        usleep(1000);
-        errno = 0;
-        exit++;
+    bool status = true;
+    while(status) {
+        if (int retval = select(fd+1, &readSet, NULL, NULL, &tv); retval > 0) {
+            if (FD_ISSET(fd, &readSet)) {
+                if (auto bytesRead = read(fd, &buffer[0], buffer.size()); bytesRead > 0) {
+                    output += std::string(buffer.data(), size_t(bytesRead));
+                    if (bytesRead < ssize_t(buffer.size())) {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+        } else {
+            break;
+        }
     }
 
-    if (bytesRead > 0) {
-        output = std::string(buffer.data(), size_t(bytesRead));
-    }
-
-    while ((bytesRead = read(m_stdout, &buffer[0], buffer.size())) > 0) {
-        output += std::string(buffer.data(), size_t(bytesRead));
-    }
     return output;
+}
+
+inline std::string Process::readAllStandardOutput()
+{
+    return readFromFd(m_stdout);
 }
 
 inline std::string Process::readAllStandardError()
 {
-    std::array<char, 1024> buffer;
-    std::string            output;
-
-    ssize_t bytesRead;
-    while ((bytesRead = read(m_stderr, &buffer[0], buffer.size())) > 0) {
-        output += std::string(buffer.data(), size_t(bytesRead));
-    }
-    return output;
+    return readFromFd(m_stderr);
 }
 
 inline bool Process::write(const std::string& cmd)

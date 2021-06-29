@@ -16,6 +16,7 @@
 #include "fty/process.h"
 #include "fty/string-utils.h"
 #include <catch2/catch.hpp>
+#include <iostream>
 
 TEST_CASE("Process")
 {
@@ -142,5 +143,14 @@ TEST_CASE("Write process 2")
     CHECK("hello" == fty::trimmed(process.readAllStandardOutput()));
     CHECK(process.write("hello2\n"));
     CHECK("hello2" == fty::trimmed(process.readAllStandardOutput()));
+}
+
+TEST_CASE("Huge")
+{
+    auto process = fty::Process("dpkg", {"-l"});
+    auto pid     = process.run();
+    CHECK(pid.isValid());
+    CHECK(pid);
+    CHECK(process.readAllStandardOutput().size());
 }
 
