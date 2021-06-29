@@ -299,14 +299,20 @@ inline std::string Process::readAllStandardError()
 
 inline bool Process::write(const std::string& cmd)
 {
-    auto ret = ::write(m_stdin, cmd.c_str(), cmd.size());
-    return ret == ssize_t(cmd.size());
+    if (m_stdin) {
+        auto ret = ::write(m_stdin, cmd.c_str(), cmd.size());
+        syncfs(m_stdin);
+        return ret == ssize_t(cmd.size());
+    }
+    return false;
 }
 
 inline void Process::closeWriteChannel()
 {
-    close(m_stdin);
-    m_stdin = 0;
+    if (m_stdin) {
+        close(m_stdin);
+        m_stdin = 0;
+    }
 }
 
 inline void Process::setEnvVar(const std::string& name, const std::string& val)
