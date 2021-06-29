@@ -268,9 +268,8 @@ inline std::string readFromFd(int fd)
     FD_ZERO(&readSet);
     FD_SET(fd, &readSet);
 
-    bool status = true;
-    while(status) {
-        if (int retval = select(fd+1, &readSet, NULL, NULL, &tv); retval > 0) {
+    while(true) {
+        if (int retval = select(fd+1, &readSet, nullptr, nullptr, &tv); retval > 0) {
             if (FD_ISSET(fd, &readSet)) {
                 if (auto bytesRead = read(fd, &buffer[0], buffer.size()); bytesRead > 0) {
                     output += std::string(buffer.data(), size_t(bytesRead));
@@ -303,7 +302,7 @@ inline bool Process::write(const std::string& cmd)
 {
     if (m_stdin) {
         auto ret = ::write(m_stdin, cmd.c_str(), cmd.size());
-        syncfs(m_stdin);
+        fsync(m_stdin);
         return ret == ssize_t(cmd.size());
     }
     return false;
