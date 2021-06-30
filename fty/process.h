@@ -267,16 +267,19 @@ inline std::string readFromFd(int fd)
     fd_set readSet;
     FD_ZERO(&readSet);
     FD_SET(fd, &readSet);
+    int exit = 0;
 
     while(true) {
         if (int retval = select(fd+1, &readSet, nullptr, nullptr, &tv); retval > 0) {
             if (FD_ISSET(fd, &readSet)) {
                 if (auto bytesRead = read(fd, &buffer[0], buffer.size()); bytesRead > 0) {
                     output += std::string(buffer.data(), size_t(bytesRead));
-                    if (bytesRead < ssize_t(buffer.size())) {
-                        break;
-                    }
                 } else {
+                    if (errno == EAGAIN && exit < 2) {
+                        usleep(100);
+                        ++exit;
+                        continue;
+                    }
                     break;
                 }
             }
