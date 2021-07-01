@@ -5,7 +5,7 @@ Build-Depends:
   debhelper (>= 9),
   fty-cmake-dev,
   libfmt-dev
-Standards-Version: 1.0.0
+Standards-Version: 4.0.1.0
 Section: devel
 Priority: extra
 
