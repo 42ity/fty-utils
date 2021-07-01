@@ -143,32 +143,39 @@ void CommandLine::Option::consume(std::vector<std::string>& args)
 
         const std::string& arg = *it;
 
-        if (!m_format.longFormat.empty() && arg.find(m_format.longFormat) == 0) {
-            if (isBoolOpt()) {
-                m_option.setter("");
-            } else {
-                auto pos = arg.find("=");
-                if (pos == std::string::npos) {
-                    throw std::runtime_error("Wrong format of option " + arg);
-                }
-                setValue(arg.substr(pos + 1));
-            }
-            args.erase(it);
-        }
-        if (arg == m_format.shortFormat) {
-            if (isBoolOpt()) {
-                m_option.setter("");
-                args.erase(it);
-            } else {
-                if (it + 1 != args.end()) {
-                    setValue(*(it + 1));
-                    args.erase(it + 1);
-                    args.erase(it);
+        // option is defined only if long format is specified
+        if (!m_format.longFormat.empty()) {
+            // for long format, support both --option=value and --option value
+            if(arg.find(m_format.longFormat) == 0) {
+                if (isBoolOpt()) {
+                    m_option.setter("");
                 } else {
-                    throw std::runtime_error("Wrong format of option " + arg);
+                    auto pos = arg.find("=");
+                    if(pos != std::string::npos) {
+                        setValue(arg.substr(pos + 1));
+                    } else if (it + 1 != args.end()) {
+                        setValue(*(it + 1));
+                        args.erase(it + 1);
+                    } else {
+                        throw std::runtime_error("Wrong format of option " + arg);
+                    }
+                }
+            }
+            else if(arg == m_format.shortFormat) {
+                if (isBoolOpt()) {
+                    m_option.setter("");
+                } else {
+                    if (it + 1 != args.end()) {
+                        setValue(*(it + 1));
+                        args.erase(it + 1);
+                    } else {
+                        throw std::runtime_error("Wrong format of option " + arg);
+                    }
                 }
             }
         }
+
+        args.erase(it);
     }
 }
 
