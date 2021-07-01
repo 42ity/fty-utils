@@ -32,8 +32,8 @@ public:
     Expected<pid_t> run();
     Expected<int>   wait(int milliseconds = -1);
 
-    std::string readAllStandardError();
-    std::string readAllStandardOutput();
+    std::string readAllStandardError(int milliseconds = -1);
+    std::string readAllStandardOutput(int milliseconds = -1);
     bool        write(const std::string& cmd);
     void        closeWriteChannel();
     void        setEnvVar(const std::string& name, const std::string& val);
@@ -139,26 +139,31 @@ inline Expected<pid_t> Process::run()
     int cerrPipe[2];
     int cinPipe[2];
 
-    if (pipe(coutPipe) || pipe(cerrPipe) || pipe(cinPipe)) {
-        return unexpected("pipe returned an error");
-    }
-
     posix_spawn_file_actions_t action;
     posix_spawn_file_actions_init(&action);
 
     if (isSet(m_capture, Capture::Out)) {
+        if (pipe(coutPipe)) {
+            return unexpected("pipe returned an error");
+        }
         posix_spawn_file_actions_addclose(&action, coutPipe[0]);
         posix_spawn_file_actions_adddup2(&action, coutPipe[1], STDOUT_FILENO);
         // posix_spawn_file_actions_addclose(&action, coutPipe[1]);
     }
 
     if (isSet(m_capture, Capture::Err)) {
+        if (pipe(cerrPipe)) {
+            return unexpected("pipe returned an error");
+        }
         posix_spawn_file_actions_addclose(&action, cerrPipe[0]);
         posix_spawn_file_actions_adddup2(&action, cerrPipe[1], STDERR_FILENO);
         // posix_spawn_file_actions_addclose(&action, cerrPipe[1]);
     }
 
     if (isSet(m_capture, Capture::In)) {
+        if (pipe(cinPipe)) {
+            return unexpected("pipe returned an error");
+        }
         posix_spawn_file_actions_addclose(&action, cinPipe[1]);
         posix_spawn_file_actions_adddup2(&action, cinPipe[0], STDIN_FILENO);
         // posix_spawn_file_actions_addclose(&action, cinPipe[1]);
@@ -257,17 +262,28 @@ inline Expected<int> Process::wait(int milliseconds)
     return unexpected("something wrong");
 }
 
-inline std::string readFromFd(int fd)
+inline std::string readFromFd(int fd, int milliseconds, int maxretry = 2)
 {
     std::array<char, 1024> buffer;
     std::string            output;
 
-    struct timeval tv {1, 0};
+    timeval tv;
+    if (milliseconds > 0) {
+        tv.tv_sec  = milliseconds / 1000;
+        tv.tv_usec = (milliseconds % 1000) * 1000;
+    } else {
+        tv.tv_sec  = 0;
+        tv.tv_usec = 100 * 1000;
+    }
 
     fd_set readSet;
     FD_ZERO(&readSet);
     FD_SET(fd, &readSet);
     int exit = 0;
+
+    int o_flags = fcntl(fd, F_GETFL);
+    int n_flags = o_flags | O_NONBLOCK;
+    fcntl(fd, F_SETFL, n_flags);
 
     while(true) {
         if (int retval = select(fd+1, &readSet, nullptr, nullptr, &tv); retval > 0) {
@@ -275,14 +291,16 @@ inline std::string readFromFd(int fd)
                 if (auto bytesRead = read(fd, &buffer[0], buffer.size()); bytesRead > 0) {
                     output += std::string(buffer.data(), size_t(bytesRead));
                 } else {
-                    if (errno == EAGAIN && exit < 2) {
-                        usleep(100);
+                    if ((errno == EAGAIN || errno == EWOULDBLOCK) && exit < maxretry) {
                         ++exit;
                         continue;
                     }
                     break;
                 }
             }
+        } else if (retval == 0 && exit < maxretry) {
+            ++exit;
+            continue;
         } else {
             break;
         }
@@ -291,14 +309,14 @@ inline std::string readFromFd(int fd)
     return output;
 }
 
-inline std::string Process::readAllStandardOutput()
+inline std::string Process::readAllStandardOutput(int milliseconds)
 {
-    return readFromFd(m_stdout);
+    return readFromFd(m_stdout, milliseconds);
 }
 
-inline std::string Process::readAllStandardError()
+inline std::string Process::readAllStandardError(int milliseconds)
 {
-    return readFromFd(m_stderr);
+    return readFromFd(m_stderr, milliseconds);
 }
 
 inline bool Process::write(const std::string& cmd)
@@ -371,9 +389,11 @@ inline Expected<int> Process::run(const std::string& cmd, const Arguments& args,
     if (auto ret = proc.run(); !ret) {
         return unexpected(ret.error());
     }
-    auto ret = proc.wait();
     out      = proc.readAllStandardOutput();
     err      = proc.readAllStandardError();
+    auto ret = proc.wait();
+    out      += proc.readAllStandardOutput();
+    err      += proc.readAllStandardError();
     if (ret) {
         return *ret;
     } else {
@@ -387,8 +407,9 @@ inline Expected<int> Process::run(const std::string& cmd, const Arguments& args,
     if (auto ret = proc.run(); !ret) {
         return unexpected(ret.error());
     }
-    auto ret = proc.wait();
     out      = proc.readAllStandardOutput();
+    auto ret = proc.wait();
+    out      += proc.readAllStandardOutput();
     if (ret) {
         return *ret;
     } else {
