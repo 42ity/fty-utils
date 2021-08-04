@@ -24,6 +24,7 @@ etn_target(interface ${PROJECT_NAME}
         fty/flags.h
         fty/process.h
         fty/translate.h
+        fty/timer.h
     USES_PUBLIC
         fmt::fmt
 )
