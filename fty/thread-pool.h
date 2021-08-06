@@ -209,7 +209,7 @@ inline void ThreadPool::allocThread()
 {
     using namespace std::chrono_literals;
 
-    m_threads.emplace_back(std::thread([&]() {
+    auto& th = m_threads.emplace_back(std::thread([&]() {
         while (true) {
             std::shared_ptr<ITask> task;
             {
@@ -241,6 +241,7 @@ inline void ThreadPool::allocThread()
             }
         }
     }));
+    pthread_setname_np(th.native_handle(), "worker");
 }
 
 template <typename T, typename... Args>
@@ -279,9 +280,10 @@ ITask& ThreadPool::pushWorker(Func&& fnc, Args&&... args)
 
 template <typename Func>
 details::PoolWatcher::PoolWatcher(Func&& clearFunc)
-    : m_thread(&PoolWatcher::run, this)
-    , m_clearFunc(clearFunc)
+    : m_clearFunc(clearFunc)
+    , m_thread(&PoolWatcher::run, this)
 {
+    pthread_setname_np(m_thread.native_handle(), "pool watcher");
 }
 
 inline details::PoolWatcher::~PoolWatcher()

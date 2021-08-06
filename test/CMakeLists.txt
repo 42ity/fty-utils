@@ -9,6 +9,7 @@ etn_test_target(${PROJECT_NAME}
         events.cpp
         process.cpp
         translate.cpp
+        timer.cpp
     USES
         pthread
 )

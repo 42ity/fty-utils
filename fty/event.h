@@ -54,6 +54,8 @@ public:
     Slot(Func&& func, Cls* cls);
     template <typename Func>
     Slot(Func&& func);
+    Slot(Slot&&) = default;
+    Slot(const Slot&) = default;
     ~Slot();
 
     void connect(Event<Args...>& signal);
