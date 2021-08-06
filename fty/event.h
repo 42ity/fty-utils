@@ -20,6 +20,7 @@
 #include <memory>
 #include <mutex>
 #include <vector>
+#include <fty/expected.h>
 
 namespace fty {
 
@@ -94,6 +95,11 @@ public:
 
     void wait();
 
+    Expected<void> wait(int msecTimeout);
+
+    template <typename Rep, typename Period>
+    Expected<void> wait(const std::chrono::duration<Rep, Period>& timeout);
+
 private:
     using Connections = std::vector<std::weak_ptr<typename Slot<Args...>::Impl>>;
 
@@ -151,6 +157,29 @@ void Event<Args...>::wait()
         return m_stopped || m_fired;
     });
     m_fired = false;
+}
+
+template <typename... Args>
+Expected<void> Event<Args...>::wait(int mSecTimeout)
+{
+    return wait(std::chrono::milliseconds(mSecTimeout));
+}
+
+template <typename... Args>
+template <typename Rep, typename Period>
+Expected<void> Event<Args...>::wait(const std::chrono::duration<Rep, Period>& timeout)
+{
+    std::unique_lock<std::mutex> lock(m_mutex);
+    auto ret = m_cv.wait_for(lock, timeout, [&]() {
+        return m_stopped || m_fired;
+    });
+
+    if (!ret) {
+        return unexpected("timeout");
+    } else {
+        m_fired = false;
+        return {};
+    }
 }
 
 // ===========================================================================================================
