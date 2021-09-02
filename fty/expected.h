@@ -36,6 +36,7 @@ public:
     constexpr Expected() = delete;
     constexpr Expected(const T& value) noexcept;
     constexpr Expected(T&& value) noexcept;
+    constexpr Expected(Expected&& other) noexcept;
     template <typename UnErrorT>
     constexpr Expected(Unexpected<UnErrorT>&& unex) noexcept;
     template <typename UnErrorT>
@@ -51,8 +52,8 @@ public:
     constexpr T&&           value() && noexcept;
     constexpr const ErrorT& error() const& noexcept;
 
-    constexpr bool isValid() const noexcept;
-    constexpr      operator bool() const noexcept;
+    constexpr bool     isValid() const noexcept;
+    explicit constexpr operator bool() const noexcept;
 
     constexpr const T&  operator*() const& noexcept;
     constexpr T&        operator*() & noexcept;
@@ -144,6 +145,17 @@ template <typename T, typename ErrorT>
 constexpr Expected<T, ErrorT>::Expected(T&& value) noexcept
     : m_value(std::move(value))
 {
+}
+
+template <typename T, typename ErrorT>
+constexpr Expected<T, ErrorT>::Expected(Expected&& other) noexcept
+{
+    if (other.m_isError) {
+        m_isError = true;
+        m_error   = std::move(other.m_error);
+    } else {
+        m_value = std::move(other.m_value);
+    }
 }
 
 template <typename T, typename ErrorT>
