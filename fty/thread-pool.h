@@ -143,7 +143,7 @@ private:
     std::vector<std::thread>           m_threads;
     std::mutex                         m_mutex;
     std::condition_variable            m_cv;
-    bool                               m_stop = false;
+    std::atomic_bool                   m_stop = false;
     std::deque<std::shared_ptr<ITask>> m_tasks;
     details::PoolWatcher               m_watcher;
 };
@@ -183,17 +183,14 @@ inline void ThreadPool::stop(Stop mode)
 {
     if (!m_stop) {
         m_watcher.stop();
-        {
-            if (mode == Stop::WaitForQueue) {
-                std::unique_lock<std::mutex> lock(m_mutex, std::defer_lock);
-                m_cv.wait(lock, [&]() {
-                    return m_tasks.empty();
-                });
-            }
-
-            std::lock_guard<std::mutex> lock(m_mutex);
-            m_stop = true;
+        if (mode == Stop::WaitForQueue) {
+            std::unique_lock<std::mutex> lock(m_mutex, std::defer_lock);
+            m_cv.wait(lock, [&]() {
+                return m_tasks.empty();
+            });
         }
+
+        m_stop = true;
         m_cv.notify_all();
 
         for (std::thread& thread : m_threads) {
@@ -210,7 +207,7 @@ inline void ThreadPool::allocThread()
     using namespace std::chrono_literals;
 
     auto& th = m_threads.emplace_back(std::thread([&]() {
-        while (true) {
+        while (m_stop) {
             std::shared_ptr<ITask> task;
             {
                 std::unique_lock<std::mutex> lock(m_mutex);
