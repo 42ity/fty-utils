@@ -207,7 +207,7 @@ inline void ThreadPool::allocThread()
     using namespace std::chrono_literals;
 
     auto& th = m_threads.emplace_back(std::thread([&]() {
-        while (m_stop) {
+        while (!m_stop) {
             std::shared_ptr<ITask> task;
             {
                 std::unique_lock<std::mutex> lock(m_mutex);
