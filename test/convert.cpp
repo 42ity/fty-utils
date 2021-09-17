@@ -31,6 +31,21 @@ TEST_CASE("Convert")
     CHECK(32 == fty::convert<int>(32.222));
     CHECK(1 == fty::convert<int>(true));
 
+    CHECK(0 == fty::convert<int8_t>("0"));
+    CHECK(-1 == fty::convert<int8_t>("-1"));
+    CHECK(0 == fty::convert<uint8_t>("0"));
+    CHECK(255 == fty::convert<uint8_t>("255"));
+
+    CHECK(0 == fty::convert<int16_t>("0"));
+    CHECK(0 == fty::convert<uint16_t>("0"));
+    CHECK(-1 == fty::convert<int16_t>("-1"));
+    CHECK(314 == fty::convert<uint16_t>("314"));
+
+    CHECK(0 == fty::convert<int32_t>("0"));
+    CHECK(0 == fty::convert<uint32_t>("0"));
+    CHECK(-1 == fty::convert<int32_t>("-1"));
+    CHECK(845680 == fty::convert<uint32_t>("845680"));
+
     CHECK(42 == fty::convert<int>("42"));
     CHECK(true == fty::convert<bool>("true"));
     CHECK(false == fty::convert<bool>("false"));
