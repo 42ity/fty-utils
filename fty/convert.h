@@ -37,12 +37,16 @@ T convert(const VT& value)
             return std::stof(string);
         } else if constexpr (std::is_same_v<T, double>) {
             return std::stod(string);
+        } else if constexpr (std::is_same_v<T, int8_t>) {
+            return int8_t(std::stoi(string));
+        } else if constexpr (std::is_same_v<T, uint8_t>) {
+            return uint8_t(std::stoul(string));
         } else if constexpr (std::is_same_v<T, int16_t>) {
-            return std::stoi(string);
+            return int16_t(std::stoi(string));
         } else if constexpr (std::is_same_v<T, uint16_t>) {
-            return std::stoul(string);
+            return uint16_t(std::stoul(string));
         } else if constexpr (std::is_same_v<T, int32_t>) {
-            return std::stoi(string);
+            return int32_t(std::stoi(string));
         } else if constexpr (std::is_same_v<T, uint32_t>) {
             return uint32_t(std::stoul(string));
         } else if constexpr (std::is_same_v<T, int64_t>) {
@@ -72,15 +76,15 @@ T convert(const VT& value)
     }
 }
 
-//template<typename To, typename From>
-//using isConvertable = std::is_same<decltype(convert<To, From>(std::declval<const From&>())), To>;
+// template<typename To, typename From>
+// using isConvertable = std::is_same<decltype(convert<To, From>(std::declval<const From&>())), To>;
 
-//template<typename To, typename From, typename = void>
-//struct isConvertable : std::false_type
+// template<typename To, typename From, typename = void>
+// struct isConvertable : std::false_type
 //{};
 
-//template<typename To, typename From>
-//struct isConvertable<To, From, std::is_same_v<convert_t<From>, To> : std::true_type
+// template<typename To, typename From>
+// struct isConvertable<To, From, std::is_same_v<convert_t<From>, To> : std::true_type
 //{
 //};
 
