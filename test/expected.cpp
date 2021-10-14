@@ -95,7 +95,8 @@ TEST_CASE("Expected")
 
     SECTION("Tests with enum errors")
     {
-        enum Errors {
+        enum Errors
+        {
             smallError,
             bigError
         };
@@ -103,15 +104,15 @@ TEST_CASE("Expected")
         auto it = fty::Expected<void, Errors>();
         CHECK(it);
 
-        auto funcOk = []() -> fty::Expected<void,Errors> {
+        auto funcOk = []() -> fty::Expected<void, Errors> {
             return {};
         };
         CHECK(funcOk());
 
-        auto funcSmallError = []() -> fty::Expected<void,Errors> {
+        auto funcSmallError = []() -> fty::Expected<void, Errors> {
             return fty::unexpected(Errors::smallError);
         };
-        
+
         auto resSmallError = funcSmallError();
         CHECK(!resSmallError);
         CHECK(Errors::smallError == resSmallError.error());
@@ -119,7 +120,8 @@ TEST_CASE("Expected")
 
     SECTION("Tests with enum class errors")
     {
-        enum class Errors {
+        enum class Errors
+        {
             smallError,
             bigError
         };
@@ -127,15 +129,15 @@ TEST_CASE("Expected")
         auto it = fty::Expected<void, Errors>();
         CHECK(it);
 
-        auto funcOk = []() -> fty::Expected<void,Errors> {
+        auto funcOk = []() -> fty::Expected<void, Errors> {
             return {};
         };
         CHECK(funcOk());
 
-        auto funcSmallError = []() -> fty::Expected<void,Errors> {
+        auto funcSmallError = []() -> fty::Expected<void, Errors> {
             return fty::unexpected(Errors::smallError);
         };
-        
+
         auto resSmallError = funcSmallError();
         CHECK(!resSmallError);
         CHECK(Errors::smallError == resSmallError.error());
@@ -146,15 +148,15 @@ TEST_CASE("Expected")
         auto it = fty::Expected<void, std::runtime_error>();
         CHECK(it);
 
-        auto funcOk = []() -> fty::Expected<void,std::runtime_error> {
+        auto funcOk = []() -> fty::Expected<void, std::runtime_error> {
             return {};
         };
         CHECK(funcOk());
 
-        auto funcDirectError = []() -> fty::Expected<void,std::runtime_error> {
+        auto funcDirectError = []() -> fty::Expected<void, std::runtime_error> {
             return fty::unexpected(std::runtime_error("Error message"));
         };
-        
+
         auto resDirectError = funcDirectError();
         CHECK(!resDirectError);
         CHECK("Error message" == std::string(resDirectError.error().what()));
@@ -165,19 +167,19 @@ TEST_CASE("Expected")
         auto it = fty::Expected<void, std::exception_ptr>();
         CHECK(it);
 
-        auto funcOk = []() -> fty::Expected<void,std::exception_ptr> {
+        auto funcOk = []() -> fty::Expected<void, std::exception_ptr> {
             return {};
         };
         CHECK(funcOk());
 
-       auto funcTriggeredError = []() -> fty::Expected<void,std::exception_ptr> {
-            try{
+        auto funcTriggeredError = []() -> fty::Expected<void, std::exception_ptr> {
+            try {
                 throw std::runtime_error("Error message");
-            } catch (std::exception & e) {
+            } catch (std::exception& e) {
                 return fty::unexpected(std::current_exception());
             }
         };
-        
+
         auto resTriggeredError = funcTriggeredError();
         CHECK(!resTriggeredError);
 

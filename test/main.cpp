@@ -16,3 +16,16 @@
 #define CATCH_CONFIG_MAIN
 #define CATCH_CONFIG_DISABLE_EXCEPTIONS
 #include <catch2/catch.hpp>
+
+//add all the include here, so that they appear in coverage report
+#include "fty/command-line.h"
+#include "fty/convert.h"
+#include "fty/event.h"
+#include "fty/expected.h"
+#include "fty/flags.h"
+#include "fty/process.h"
+#include "fty/string-utils.h"
+#include "fty/thread-pool.h"
+//#include "fty/timer.h"
+#include "fty/traits.h"
+#include "fty/translate.h"
