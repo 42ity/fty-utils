@@ -203,13 +203,13 @@ namespace details {
 
 // =========================================================================================================================================
 
-details::TimersHolder::TimersHolder()
+inline details::TimersHolder::TimersHolder()
     : m_thread(&TimersHolder::worker, this)
 {
     pthread_setname_np(m_thread.native_handle(), "timer");
 }
 
-uint64_t details::TimersHolder::addTimer(std::unique_ptr<TimerImpl>&& timer)
+inline uint64_t details::TimersHolder::addTimer(std::unique_ptr<TimerImpl>&& timer)
 {
     static uint64_t id = 0;
     {
@@ -222,17 +222,17 @@ uint64_t details::TimersHolder::addTimer(std::unique_ptr<TimerImpl>&& timer)
     return id;
 }
 
-details::TimersHolder::~TimersHolder()
+inline details::TimersHolder::~TimersHolder()
 {
     stop();
 }
 
-bool details::TimersHolder::isActive(uint64_t timerId) const
+inline bool details::TimersHolder::isActive(uint64_t timerId) const
 {
     return m_timers.count(timerId) > 0;
 }
 
-void details::TimersHolder::calcNextTimeout()
+inline void details::TimersHolder::calcNextTimeout()
 {
     m_currentTimer = 0;
     m_nextTimeout  = std::chrono::steady_clock::now() + std::chrono::hours(8760);
@@ -249,7 +249,7 @@ void details::TimersHolder::calcNextTimeout()
     }
 }
 
-void details::TimersHolder::worker()
+inline void details::TimersHolder::worker()
 {
     m_running = true;
     while (m_running) {
@@ -288,7 +288,7 @@ void details::TimersHolder::worker()
     }
 }
 
-void details::TimersHolder::stop()
+inline void details::TimersHolder::stop()
 {
     {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -299,7 +299,7 @@ void details::TimersHolder::stop()
     m_thread.join();
 }
 
-void details::TimersHolder::stopTimer(uint64_t timerId)
+inline void details::TimersHolder::stopTimer(uint64_t timerId)
 {
     {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -309,7 +309,7 @@ void details::TimersHolder::stopTimer(uint64_t timerId)
     m_cv.notify_all();
 }
 
-void details::TimersHolder::removeTimer(uint64_t timerId)
+inline void details::TimersHolder::removeTimer(uint64_t timerId)
 {
     if (m_timers.count(timerId)) {
         // m_timers[timerId]->finish();
@@ -318,7 +318,7 @@ void details::TimersHolder::removeTimer(uint64_t timerId)
     }
 }
 
-details::TimerImpl* details::TimersHolder::timer(uint64_t timerId)
+inline details::TimerImpl* details::TimersHolder::timer(uint64_t timerId)
 {
     if (m_timers.count(timerId)) {
         return m_timers[timerId].get();
@@ -326,7 +326,7 @@ details::TimerImpl* details::TimersHolder::timer(uint64_t timerId)
     return nullptr;
 }
 
-bool details::TimersHolder::isRepeatable(uint64_t timerId) const
+inline bool details::TimersHolder::isRepeatable(uint64_t timerId) const
 {
     if (m_timers.count(timerId)) {
         return dynamic_cast<RepeatableImpl*>(m_timers.at(timerId).get()) != nullptr;
