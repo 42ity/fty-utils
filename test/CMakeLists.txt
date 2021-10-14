@@ -8,6 +8,7 @@ etn_test_target(${PROJECT_NAME}
         expected.cpp
         events.cpp
         process.cpp
+        thread-pool.cpp
         translate.cpp
         timer.cpp
     USES
