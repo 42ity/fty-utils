@@ -26,6 +26,6 @@
 #include "fty/process.h"
 #include "fty/string-utils.h"
 #include "fty/thread-pool.h"
-//#include "fty/timer.h"
+#include "fty/timer.h"
 #include "fty/traits.h"
 #include "fty/translate.h"
