@@ -384,6 +384,9 @@ inline void ThreadPool::taskRunner()
                 continue;
             }
 
+            // Get the thread lock and check if we are still asked to run
+            std::unique_lock<std::mutex> lockThread(m_tokenThreads);
+
             // We are asked to stop, no need to update worker
             if (m_stopping) {
                 continue;
@@ -393,13 +396,6 @@ inline void ThreadPool::taskRunner()
             //   If the queue is empty => Nothing more for this worker
             //   And we didn't reach the minimum number of worker
             if ((m_countPendingTasks == 0) && (m_countThreads > m_minNumThreads)) {
-
-                // Get the thread lock and check if we are still asked to run
-                std::unique_lock<std::mutex> lockThread(m_tokenThreads);
-                if (m_stopping) {
-                    continue;
-                }
-
                 // I need to find myself in the list
                 auto myId = std::this_thread::get_id();
 
