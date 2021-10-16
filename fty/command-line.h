@@ -211,8 +211,7 @@ inline void CommandLine::Option::setValue(const std::string& str)
         auto it = std::find(m_oneOfMany.begin(), m_oneOfMany.end(), str);
         if (it == m_oneOfMany.end()) {
             std::stringstream ss;
-            ss << "Value '" << str << "' of option '" << m_option.format << "' should be one from ["
-               << implode(m_oneOfMany, ", ") << "]";
+            ss << "Value '" << str << "' of option '" << m_option.format << "' should be one from [" << implode(m_oneOfMany, ", ") << "]";
 
             throw std::runtime_error(ss.str());
         }
@@ -251,7 +250,13 @@ inline CommandLine::CommandLine(const std::string& description, std::initializer
 
 inline Expected<bool> CommandLine::parse(int argc, char** argv)
 {
-    std::vector<std::string> args(argv + 1, argv + argc);
+    //Build the string manually
+    std::vector<std::string> args;
+    
+    for(int argPos = 0; argPos < argc; argPos++){
+        args.push_back(std::string(argv[argPos]));
+    }
+    
     try {
         for (auto& opt : m_options) {
             opt->consume(args);
