@@ -11,6 +11,7 @@ etn_test_target(${PROJECT_NAME}
         translate.cpp
         timer.cpp
         thread-pool.cpp
+        command-line.cpp
     USES
         pthread
 )

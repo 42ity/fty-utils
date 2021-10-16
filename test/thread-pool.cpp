@@ -13,23 +13,27 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
     ========================================================================
 */
-#include "fty/string-utils.h"
 #include "fty/thread-pool.h"
+#include "fty/string-utils.h"
 #include <catch2/catch.hpp>
 
+// Counters and Function used in most of the test
+static std::atomic_int started  = 0;
+static std::atomic_int executed = 0;
+
+static void functionTest(int num)
+{
+    started++;
+    std::cout << std::this_thread::get_id() << " Start task num: " << num << std::endl;
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+    executed++;
+    std::cout << std::this_thread::get_id() << " Stop task num: " << num << std::endl;
+}
 
 TEST_CASE("ThreadPool fixed workers")
 {
-    std::atomic_int started  = 0;
-    std::atomic_int executed = 0;
-
-    auto func = [&](int num) {
-        started++;
-        std::cout << std::this_thread::get_id() << " Start task num: " << num << std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-        executed++;
-        std::cout << std::this_thread::get_id() << " Stop task num: " << num << std::endl;
-    };
+    started  = 0;
+    executed = 0;
 
     {
         // create a pool of 2 threads
@@ -41,7 +45,7 @@ TEST_CASE("ThreadPool fixed workers")
 
         // push 5 tasks
         for (int i = 0; i < 5; i++) {
-            pool.pushWorker(func, i);
+            pool.pushWorker(functionTest, i);
         }
         std::this_thread::sleep_for(std::chrono::seconds(1));
 
@@ -63,10 +67,11 @@ TEST_CASE("ThreadPool fixed workers - exception in task")
     class MyException : public std::runtime_error
     {
     public:
-        inline MyException(): std::runtime_error("Test"){};
+        inline MyException()
+            : std::runtime_error("Test"){};
     };
 
-    auto func = [&](int num) {
+    auto functionException = [&](int num) {
         std::cout << std::this_thread::get_id() << " Start task num: " << num << std::endl;
         throw MyException();
     };
@@ -80,7 +85,7 @@ TEST_CASE("ThreadPool fixed workers - exception in task")
         CHECK(pool.getCountPendingTasks() == 0);
 
         // push a task
-        auto myTask = pool.pushWorker(func, 0);
+        auto myTask = pool.pushWorker(functionException, 0);
 
         std::this_thread::sleep_for(std::chrono::seconds(1));
 
@@ -99,16 +104,8 @@ TEST_CASE("ThreadPool fixed workers - exception in task")
 
 TEST_CASE("ThreadPool fixed workers with normal stop")
 {
-    std::atomic_int started  = 0;
-    std::atomic_int executed = 0;
-
-    auto func = [&](int num) {
-        started++;
-        std::cout << std::this_thread::get_id() << " Start task num: " << num << std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-        executed++;
-        std::cout << std::this_thread::get_id() << " Stop task num: " << num << std::endl;
-    };
+    started  = 0;
+    executed = 0;
 
     // create a pool of 2 threads
     fty::ThreadPool pool(2);
@@ -120,7 +117,7 @@ TEST_CASE("ThreadPool fixed workers with normal stop")
 
     // push 5 tasks
     for (int i = 0; i < 5; i++) {
-        pool.pushWorker(func, i);
+        pool.pushWorker(functionTest, i);
     }
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
@@ -142,16 +139,8 @@ TEST_CASE("ThreadPool fixed workers with normal stop")
 
 TEST_CASE("ThreadPool fixed workers immediat stop")
 {
-    std::atomic_int started  = 0;
-    std::atomic_int executed = 0;
-
-    auto func = [&](int num) {
-        started++;
-        std::cout << std::this_thread::get_id() << " Start task num: " << num << std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-        executed++;
-        std::cout << std::this_thread::get_id() << " Stop task num: " << num << std::endl;
-    };
+    started  = 0;
+    executed = 0;
 
     // create a pool of 2 threads
     fty::ThreadPool pool(2);
@@ -163,7 +152,7 @@ TEST_CASE("ThreadPool fixed workers immediat stop")
 
     // push 5 tasks
     for (int i = 0; i < 5; i++) {
-        pool.pushWorker(func, i);
+        pool.pushWorker(functionTest, i);
     }
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
@@ -185,16 +174,8 @@ TEST_CASE("ThreadPool fixed workers immediat stop")
 
 TEST_CASE("ThreadPool fixed workers cancel stop")
 {
-    std::atomic_int started  = 0;
-    std::atomic_int executed = 0;
-
-    auto func = [&](int num) {
-        started++;
-        std::cout << std::this_thread::get_id() << " Start task num: " << num << std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-        executed++;
-        std::cout << std::this_thread::get_id() << " Stop task num: " << num << std::endl;
-    };
+    started  = 0;
+    executed = 0;
 
     // create a pool of 2 threads
     fty::ThreadPool pool(2);
@@ -205,7 +186,7 @@ TEST_CASE("ThreadPool fixed workers cancel stop")
 
     // push 5 tasks
     for (int i = 0; i < 5; i++) {
-        pool.pushWorker(func, i);
+        pool.pushWorker(functionTest, i);
     }
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
@@ -219,16 +200,8 @@ TEST_CASE("ThreadPool fixed workers cancel stop")
 
 TEST_CASE("ThreadPool dynamic workers - need more allocation")
 {
-    std::atomic_int started  = 0;
-    std::atomic_int executed = 0;
-
-    auto func = [&](int num) {
-        started++;
-        std::cout << std::this_thread::get_id() << " Start task num: " << num << std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-        executed++;
-        std::cout << std::this_thread::get_id() << " Stop task num: " << num << std::endl;
-    };
+    started  = 0;
+    executed = 0;
 
     // Create a pool
     fty::ThreadPool pool(1, 3);
@@ -240,7 +213,7 @@ TEST_CASE("ThreadPool dynamic workers - need more allocation")
 
     // Push 5 tasks
     for (int i = 0; i < 5; i++) {
-        pool.pushWorker(func, i);
+        pool.pushWorker(functionTest, i);
     }
 
     std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -264,16 +237,8 @@ TEST_CASE("ThreadPool dynamic workers - need more allocation")
 
 TEST_CASE("ThreadPool dynamic workers - no need for more allocation")
 {
-    std::atomic_int started  = 0;
-    std::atomic_int executed = 0;
-
-    auto func = [&](int num) {
-        started++;
-        std::cout << std::this_thread::get_id() << " Start task num: " << num << std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-        executed++;
-        std::cout << std::this_thread::get_id() << " Stop task num: " << num << std::endl;
-    };
+    started  = 0;
+    executed = 0;
 
     // Create a pool
     fty::ThreadPool pool(5, 7);
@@ -285,7 +250,7 @@ TEST_CASE("ThreadPool dynamic workers - no need for more allocation")
 
     // Push 5 tasks
     for (int i = 0; i < 5; i++) {
-        pool.pushWorker(func, i);
+        pool.pushWorker(functionTest, i);
     }
 
     std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -309,16 +274,8 @@ TEST_CASE("ThreadPool dynamic workers - no need for more allocation")
 
 TEST_CASE("ThreadPool dynamic workers stop")
 {
-    std::atomic_int started  = 0;
-    std::atomic_int executed = 0;
-
-    auto func = [&](int num) {
-        started++;
-        std::cout << std::this_thread::get_id() << " Start task num: " << num << std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-        executed++;
-        std::cout << std::this_thread::get_id() << " Stop task num: " << num << std::endl;
-    };
+    started  = 0;
+    executed = 0;
 
     // Create a pool
     fty::ThreadPool pool(1, 3);
@@ -329,7 +286,7 @@ TEST_CASE("ThreadPool dynamic workers stop")
 
     // Push 5 tasks
     for (int i = 0; i < 5; i++) {
-        pool.pushWorker(func, i);
+        pool.pushWorker(functionTest, i);
     }
 
     std::this_thread::sleep_for(std::chrono::seconds(1));

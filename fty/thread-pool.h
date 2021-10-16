@@ -21,12 +21,77 @@
 #include <deque>
 #include <fty/event.h>
 #include <functional>
-#include <iostream>
 #include <mutex>
 #include <thread>
 #include <vector>
 
 namespace fty {
+// ===========================================================================================================
+
+class ITask;
+
+class ThreadPool
+{
+public:
+    enum class Stop
+    {
+        WaitForQueue,
+        Immedialy,
+        Cancel
+    };
+
+public:
+    // Thread pool actions
+    ThreadPool(size_t numThreads = std::thread::hardware_concurrency() - 1);
+    ThreadPool(size_t minNumThreads, size_t maxNumThreads);
+    ~ThreadPool();
+
+    ThreadPool(const ThreadPool&) = delete;
+    ThreadPool& operator=(const ThreadPool&) = delete;
+
+    size_t getCountAllocatedThreads() noexcept;
+
+    void stop(Stop mode = Stop::WaitForQueue);
+    void requestStop(Stop mode = Stop::WaitForQueue) noexcept;
+    void waitUntilStopped();
+
+public:
+    // Managed Tasks in the pool
+    template <typename T, typename... Args>
+    std::shared_ptr<ITask> pushWorker(Args&&... args);
+
+    template <typename Func, typename... Args>
+    std::shared_ptr<ITask> pushWorker(Func&& fnc, Args&&... args);
+
+    size_t getCountPendingTasks() noexcept;
+    size_t getCountActiveTasks() noexcept;
+
+private:
+    void init();
+    void taskRunner();
+    void addTask(std::shared_ptr<ITask> task);
+
+    void waitEndAllthreads() noexcept; // Used in waitUntilStopped and ~ThreadPool
+
+private:
+    const size_t m_minNumThreads;
+    const size_t m_maxNumThreads;
+
+    // List of threads in the pool
+    std::vector<std::thread> m_threads;
+    std::atomic<size_t>      m_countThreads = 0;
+    std::mutex               m_tokenThreads;     // Manipulation on threads requires m_tokenThreads locked and !m_stopping
+    std::atomic_bool         m_stopping = false; // This value can only be changed when m_tokenThreads is locked.
+    std::atomic_bool         m_canceled = false; // This value can only be changed when m_tokenThreads is locked.
+
+
+    // Management of tasks and task queue
+    std::deque<std::shared_ptr<ITask>> m_tasks;
+    std::atomic<size_t>                m_countPendingTasks = 0;
+    std::mutex                         m_tokenTasks;
+    std::condition_variable            m_cvTasks;
+    std::atomic<size_t>                m_countActiveTasks = 0;
+};
 
 // ===========================================================================================================
 
@@ -96,69 +161,6 @@ namespace details {
 
 } // namespace details
 
-// ===========================================================================================================
-
-class ThreadPool
-{
-public:
-    enum class Stop
-    {
-        WaitForQueue,
-        Immedialy,
-        Cancel
-    };
-
-public:
-    // Thread pool actions
-    ThreadPool(size_t numThreads = std::thread::hardware_concurrency() - 1);
-    ThreadPool(size_t minNumThreads, size_t maxNumThreads);
-    ~ThreadPool();
-
-    ThreadPool(const ThreadPool&) = delete;
-    ThreadPool& operator=(const ThreadPool&) = delete;
-
-    size_t getCountAllocatedThreads();
-
-    void stop(Stop mode = Stop::WaitForQueue);
-    void requestStop(Stop mode = Stop::WaitForQueue);
-    void waitUntilStopped();
-
-public:
-    // Managed Tasks in the pool
-    template <typename T, typename... Args>
-    std::shared_ptr<ITask> pushWorker(Args&&... args);
-
-    template <typename Func, typename... Args>
-    std::shared_ptr<ITask> pushWorker(Func&& fnc, Args&&... args);
-
-    size_t getCountPendingTasks();
-    size_t getCountActiveTasks();
-
-private:
-    void init();
-    void taskRunner();
-    void addTask(std::shared_ptr<ITask> task);
-
-private:
-    const size_t m_minNumThreads;
-    const size_t m_maxNumThreads;
-
-    // List of threads in the pool
-    std::vector<std::thread> m_threads;
-    std::atomic<size_t>      m_countThreads = 0;
-    std::mutex               m_tokenThreads;     // Manipulation on threads requires m_tokenThreads locked and !m_stopping
-    std::atomic_bool         m_stopping = false; // This value can only be changed when m_tokenThreads is locked.
-    std::atomic_bool         m_canceled = false; // This value can only be changed when m_tokenThreads is locked.
-
-
-    // Management of tasks and task queue
-    std::deque<std::shared_ptr<ITask>> m_tasks;
-    std::atomic<size_t>                m_countPendingTasks = 0;
-    std::mutex                         m_tokenTasks;
-    std::condition_variable            m_cvTasks;
-    std::atomic<size_t>                m_countActiveTasks = 0;
-};
-
 template <typename T>
 Task<T>::Task() = default;
 
@@ -202,10 +204,11 @@ inline void ThreadPool::init()
 inline ThreadPool::~ThreadPool()
 {
     // Do not start any new task, and wait to have the current one stopped
-    stop(Stop::Immedialy);
+    requestStop(Stop::Immedialy);
+    waitEndAllthreads();
 }
 
-inline size_t ThreadPool::getCountAllocatedThreads()
+inline size_t ThreadPool::getCountAllocatedThreads() noexcept
 {
     return m_countThreads;
 }
@@ -272,13 +275,13 @@ inline void ThreadPool::addTask(std::shared_ptr<ITask> task)
     m_cvTasks.notify_one();
 }
 
-inline size_t ThreadPool::getCountPendingTasks()
+inline size_t ThreadPool::getCountPendingTasks() noexcept
 {
     // We need to count the threads
     return m_countPendingTasks;
 }
 
-inline size_t ThreadPool::getCountActiveTasks()
+inline size_t ThreadPool::getCountActiveTasks() noexcept
 {
     return m_countActiveTasks;
 }
@@ -289,7 +292,7 @@ inline void ThreadPool::stop(Stop mode)
     waitUntilStopped();
 }
 
-inline void ThreadPool::requestStop(Stop mode)
+inline void ThreadPool::requestStop(Stop mode) noexcept
 {
     {
         std::unique_lock<std::mutex> lockThread(m_tokenThreads);
@@ -321,6 +324,11 @@ inline void ThreadPool::waitUntilStopped()
         throw std::runtime_error("Stop hasn't been requested");
     }
 
+    waitEndAllthreads();
+}
+
+inline void ThreadPool::waitEndAllthreads() noexcept
+{
     // Wait that every thread pool finish => no need of mutex because we do not accept tasks
     for (auto threadIt = m_threads.begin(); threadIt != m_threads.end(); /*it++*/) {
 
