@@ -181,16 +181,16 @@ inline ThreadPool::~ThreadPool()
 
 inline void ThreadPool::stop(Stop mode)
 {
-    if (!m_stop) {
+    if (!m_stop.load()) {
         m_watcher.stop();
         if (mode == Stop::WaitForQueue) {
-            std::unique_lock<std::mutex> lock(m_mutex, std::defer_lock);
+            std::unique_lock<std::mutex> lock(m_mutex/*, std::defer_lock*/);
             m_cv.wait(lock, [&]() {
                 return m_tasks.empty();
             });
         }
 
-        m_stop = true;
+        m_stop.store(true);
         m_cv.notify_all();
 
         for (std::thread& thread : m_threads) {
@@ -213,15 +213,15 @@ inline void ThreadPool::allocThread()
                 std::unique_lock<std::mutex> lock(m_mutex);
 
                 m_cv.wait_for(lock, 1s, [&]() {
-                    return !m_tasks.empty() || m_stop;
+                    return !m_tasks.empty() || m_stop.load();
                 });
 
-                if (!m_stop && m_tasks.empty() && m_threads.size() > m_minNumThreads) {
+                if (!m_stop.load() && m_tasks.empty() && m_threads.size() > m_minNumThreads) {
                     m_watcher.clear(std::this_thread::get_id());
                     return;
                 }
 
-                if (m_stop) {
+                if (m_stop.load()) {
                     return;
                 }
 
@@ -290,14 +290,14 @@ inline details::PoolWatcher::~PoolWatcher()
 
 inline void details::PoolWatcher::run()
 {
-    while (!m_stop) {
+    while (!m_stop.load()) {
         std::unique_lock<std::mutex> lock(m_mutex);
 
         m_cv.wait(lock, [&]() {
-            return m_stop || m_toClear;
+            return m_stop.load() || m_toClear;
         });
 
-        if (m_stop) {
+        if (m_stop.load()) {
             return;
         }
 
@@ -319,10 +319,10 @@ inline void details::PoolWatcher::clear(std::thread::id id)
 
 inline void details::PoolWatcher::stop()
 {
-    if (!m_stop) {
+    if (!m_stop.load()) {
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            m_stop = true;
+            m_stop.store(true);
         }
         m_cv.notify_one();
         if (m_thread.joinable()) {

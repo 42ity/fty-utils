@@ -20,17 +20,19 @@
 TEST_CASE("ThreadPool")
 {
     auto func = [&](int num) {
-      std::this_thread::sleep_for(std::chrono::seconds(1 * num));
+      std::this_thread::sleep_for(std::chrono::milliseconds(100 * num));
       std::cout << "Stop func" << num << std::endl;
     };
 
-    fty::ThreadPool pool;
-    for (int i=0; i < 10; i++) {
-      pool.pushWorker(func, i);
+    for(int j = 0; j < 100; ++j) {
+        fty::ThreadPool pool;
+        for (int i=0; i < 10; i++) {
+          pool.pushWorker(func, i);
+        }
+        std::cout << "" << std::endl;
+        std::cout << "Before stop" << std::endl;
+        pool.stop();
+        std::cout << "After stop" << std::endl;
     }
-    std::cout << "" << std::endl;
-    std::cout << "Before stop" << std::endl;
-    pool.stop();
-    std::cout << "After stop" << std::endl;
 }
 
