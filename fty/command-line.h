@@ -93,7 +93,7 @@ private:
 // ===========================================================================================================
 
 template <typename T>
-CommandLine::OptionDef::OptionDef(const std::string& fmt, T& var, const std::string& descr)
+inline CommandLine::OptionDef::OptionDef(const std::string& fmt, T& var, const std::string& descr)
     : setter([&](const std::string& val) {
         if constexpr (std::is_same_v<bool, T>) {
             if (!val.empty()) {
@@ -114,18 +114,18 @@ CommandLine::OptionDef::OptionDef(const std::string& fmt, T& var, const std::str
 
 // ===========================================================================================================
 
-CommandLine::Option::Option(const OptionDef& option)
+inline CommandLine::Option::Option(const OptionDef& option)
     : m_format(option.format)
     , m_option(option)
 {
 }
 
-bool CommandLine::Option::isBoolOpt()
+inline bool CommandLine::Option::isBoolOpt()
 {
     return m_option.isBool;
 }
 
-bool CommandLine::Option::match(const std::string& value)
+inline bool CommandLine::Option::match(const std::string& value)
 {
     if (!m_format.longFormat.empty() && value.find(m_format.longFormat) == 0) {
         return true;
@@ -133,7 +133,7 @@ bool CommandLine::Option::match(const std::string& value)
     return value == m_format.shortFormat;
 }
 
-void CommandLine::Option::consume(std::vector<std::string>& args)
+inline void CommandLine::Option::consume(std::vector<std::string>& args)
 {
     for (auto it = args.begin(); it != args.end();) {
         if (!match(*it)) {
@@ -172,7 +172,7 @@ void CommandLine::Option::consume(std::vector<std::string>& args)
     }
 }
 
-std::string CommandLine::Option::optFormatHelp() const
+inline std::string CommandLine::Option::optFormatHelp() const
 {
     std::stringstream ss;
     if (!m_format.shortFormat.empty()) {
@@ -187,7 +187,7 @@ std::string CommandLine::Option::optFormatHelp() const
     return ss.str();
 }
 
-std::string CommandLine::Option::helpDesc() const
+inline std::string CommandLine::Option::helpDesc() const
 {
     std::stringstream ss;
     ss << m_option.description;
@@ -200,19 +200,18 @@ std::string CommandLine::Option::helpDesc() const
     return ss.str();
 }
 
-void CommandLine::Option::setOneOfMany(const std::vector<std::string> values)
+inline void CommandLine::Option::setOneOfMany(const std::vector<std::string> values)
 {
     m_oneOfMany = values;
 }
 
-void CommandLine::Option::setValue(const std::string& str)
+inline void CommandLine::Option::setValue(const std::string& str)
 {
     if (m_oneOfMany.size()) {
         auto it = std::find(m_oneOfMany.begin(), m_oneOfMany.end(), str);
         if (it == m_oneOfMany.end()) {
             std::stringstream ss;
-            ss << "Value '" << str << "' of option '" << m_option.format << "' should be one from ["
-               << implode(m_oneOfMany, ", ") << "]";
+            ss << "Value '" << str << "' of option '" << m_option.format << "' should be one from [" << implode(m_oneOfMany, ", ") << "]";
 
             throw std::runtime_error(ss.str());
         }
@@ -222,7 +221,7 @@ void CommandLine::Option::setValue(const std::string& str)
 
 // ===========================================================================================================
 
-CommandLine::Option::Format::Format(const std::string& format)
+inline CommandLine::Option::Format::Format(const std::string& format)
 {
     std::vector<std::string> tokens = fty::split(format, "|");
     if (tokens.size() == 2) { // long and short formats
@@ -241,7 +240,7 @@ CommandLine::Option::Format::Format(const std::string& format)
 
 // ===========================================================================================================
 
-CommandLine::CommandLine(const std::string& description, std::initializer_list<OptionDef> options)
+inline CommandLine::CommandLine(const std::string& description, std::initializer_list<OptionDef> options)
     : m_description(description)
 {
     for (const auto& def : options) {
@@ -249,9 +248,15 @@ CommandLine::CommandLine(const std::string& description, std::initializer_list<O
     }
 }
 
-Expected<bool> CommandLine::parse(int argc, char** argv)
+inline Expected<bool> CommandLine::parse(int argc, char** argv)
 {
-    std::vector<std::string> args(argv + 1, argv + argc);
+    //Build the string manually
+    std::vector<std::string> args;
+    
+    for(int argPos = 0; argPos < argc; argPos++){
+        args.push_back(std::string(argv[argPos]));
+    }
+    
     try {
         for (auto& opt : m_options) {
             opt->consume(args);
@@ -269,7 +274,7 @@ Expected<bool> CommandLine::parse(int argc, char** argv)
     return true;
 }
 
-std::string CommandLine::help() const
+inline std::string CommandLine::help() const
 {
     std::stringstream ss;
     ss << m_description << std::endl;
@@ -291,12 +296,12 @@ std::string CommandLine::help() const
     return ss.str();
 }
 
-const std::vector<std::string>& CommandLine::positionalArgs() const
+inline const std::vector<std::string>& CommandLine::positionalArgs() const
 {
     return m_positionalArgs;
 }
 
-CommandLine::Option& CommandLine::option(const std::string& key)
+inline CommandLine::Option& CommandLine::option(const std::string& key)
 {
     for (auto& opt : m_options) {
         if (opt->match(key)) {
@@ -306,7 +311,7 @@ CommandLine::Option& CommandLine::option(const std::string& key)
     throw std::runtime_error("not such option " + key);
 }
 
-const std::string& CommandLine::error() const
+inline const std::string& CommandLine::error() const
 {
     return m_error;
 }
