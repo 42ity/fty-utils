@@ -21,6 +21,7 @@
 #include <deque>
 #include <fty/event.h>
 #include <functional>
+#include <iostream>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -37,8 +38,17 @@ public:
 
     virtual ~ITask() = default;
 
+    inline std::exception_ptr getException()
+    {
+        return m_eptr;
+    }
+
 public:
     virtual void operator()() = 0;
+
+private:
+    std::exception_ptr m_eptr = nullptr;
+    friend class ThreadPool;
 };
 
 // ===========================================================================================================
@@ -63,28 +73,6 @@ private:
 // ===========================================================================================================
 
 namespace details {
-
-    class PoolWatcher
-    {
-    public:
-        template <typename Func>
-        PoolWatcher(Func&& clearFunc);
-        ~PoolWatcher();
-
-        void clear(std::thread::id id);
-        void stop();
-
-    private:
-        void run();
-
-    private:
-        std::optional<std::thread::id>       m_toClear;
-        std::mutex                           m_mutex;
-        std::atomic_bool                     m_stop = false;
-        std::condition_variable              m_cv;
-        std::function<void(std::thread::id)> m_clearFunc;
-        std::thread                          m_thread;
-    };
 
     class GenericTask : public Task<GenericTask>
     {
@@ -116,40 +104,60 @@ public:
     enum class Stop
     {
         WaitForQueue,
-        Immedialy
+        Immedialy,
+        Cancel
     };
 
 public:
+    // Thread pool actions
     ThreadPool(size_t numThreads = std::thread::hardware_concurrency() - 1);
+    ThreadPool(size_t minNumThreads, size_t maxNumThreads);
     ~ThreadPool();
 
     ThreadPool(const ThreadPool&) = delete;
     ThreadPool& operator=(const ThreadPool&) = delete;
 
+    size_t getCountAllocatedThreads();
+
     void stop(Stop mode = Stop::WaitForQueue);
+    void requestStop(Stop mode = Stop::WaitForQueue);
+    void waitUntilStopped();
 
 public:
+    // Managed Tasks in the pool
     template <typename T, typename... Args>
-    ITask& pushWorker(Args&&... args);
+    std::shared_ptr<ITask> pushWorker(Args&&... args);
 
     template <typename Func, typename... Args>
-    ITask& pushWorker(Func&& fnc, Args&&... args);
+    std::shared_ptr<ITask> pushWorker(Func&& fnc, Args&&... args);
+
+    size_t getCountPendingTasks();
+    size_t getCountActiveTasks();
 
 private:
-    void allocThread();
+    void init();
+    void taskRunner();
+    void addTask(std::shared_ptr<ITask> task);
 
 private:
-    size_t                             m_minNumThreads = 0;
-    std::vector<std::thread>           m_threads;
-    std::mutex                         m_mutex;
-    std::condition_variable            m_cv;
-    std::atomic_bool                   m_stop = false;
+    const size_t m_minNumThreads;
+    const size_t m_maxNumThreads;
+
+    // List of threads in the pool
+    std::vector<std::thread> m_threads;
+    std::atomic<size_t>      m_countThreads = 0;
+    std::mutex               m_tokenThreads;     // Manipulation on threads requires m_tokenThreads locked and !m_stopping
+    std::atomic_bool         m_stopping = false; // This value can only be changed when m_tokenThreads is locked.
+    std::atomic_bool         m_canceled = false; // This value can only be changed when m_tokenThreads is locked.
+
+
+    // Management of tasks and task queue
     std::deque<std::shared_ptr<ITask>> m_tasks;
-    details::PoolWatcher               m_watcher;
+    std::atomic<size_t>                m_countPendingTasks = 0;
+    std::mutex                         m_tokenTasks;
+    std::condition_variable            m_cvTasks;
+    std::atomic<size_t>                m_countActiveTasks = 0;
 };
-
-// ===========================================================================================================
-
 
 template <typename T>
 Task<T>::Task() = default;
@@ -158,175 +166,256 @@ Task<T>::Task() = default;
 
 inline ThreadPool::ThreadPool(size_t numThreads)
     : m_minNumThreads(numThreads)
-    , m_watcher([&](std::thread::id id) {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        for (auto iter = m_threads.begin(); iter != m_threads.end(); ++iter) {
-            if (iter->get_id() == id) {
-                iter->join();
-                m_threads.erase(iter);
-                break;
-            }
-        }
-    })
+    , m_maxNumThreads(numThreads)
 {
-    for (size_t i = 0; i < numThreads; ++i) {
-        allocThread();
+    init();
+}
+
+inline ThreadPool::ThreadPool(size_t minNumThreads, size_t maxNumThreads)
+    : m_minNumThreads(minNumThreads)
+    , m_maxNumThreads(maxNumThreads)
+{
+    init();
+}
+
+inline void ThreadPool::init()
+{
+    if (m_maxNumThreads <= 0) {
+        throw std::runtime_error("Impossible to create zero or less thread in the pool");
+    }
+
+    if (m_minNumThreads > m_maxNumThreads) {
+        throw std::runtime_error("Minimum number of thread has to be smaller or equals to maximum");
+    }
+
+    // Create the threads pool (we need access to the thread list)
+    std::unique_lock<std::mutex> lockThreads(m_tokenThreads);
+
+    for (size_t i = 0; i < m_minNumThreads; ++i) {
+        std::thread th(&ThreadPool::taskRunner, this);
+        pthread_setname_np(th.native_handle(), "worker");
+        m_threads.emplace_back(std::move(th));
+        m_countThreads++;
     }
 }
 
 inline ThreadPool::~ThreadPool()
 {
+    // Do not start any new task, and wait to have the current one stopped
     stop(Stop::Immedialy);
+}
+
+inline size_t ThreadPool::getCountAllocatedThreads()
+{
+    return m_countThreads;
+}
+
+// add new task in the queue
+template <typename T, typename... Args>
+std::shared_ptr<ITask> ThreadPool::pushWorker(Args&&... args)
+{
+    // Create the task
+    std::shared_ptr<T> task;
+    task = std::make_shared<T>(std::forward<Args>(args)...);
+
+    addTask(task);
+    return task;
+}
+
+template <typename Func, typename... Args>
+std::shared_ptr<ITask> ThreadPool::pushWorker(Func&& fnc, Args&&... args)
+{
+    // Create the task
+    std::shared_ptr<details::GenericTask> task;
+    task = std::make_shared<details::GenericTask>(std::move(fnc), std::forward<Args>(args)...);
+
+    addTask(task);
+    return task;
+}
+
+inline void ThreadPool::addTask(std::shared_ptr<ITask> task)
+{
+    if (m_stopping) {
+        std::runtime_error("ThreadPool do not accept any tasks");
+    }
+
+    // Push it to the queue (we need to get the token to modify the queue)
+    {
+        std::unique_lock<std::mutex> lockTasks(m_tokenTasks);
+        m_tasks.emplace_back(task);
+        m_countPendingTasks++;
+    }
+
+    // Update the number of worker
+    // If min and max are the same update are not needed
+    if (m_minNumThreads != m_maxNumThreads) {
+
+        // When do we need to add a worker:
+        //   If the number of task being executed and in the queue are bigger than the current number of worker
+        //   And number of worker is smaller than the maximum number of worker
+        if (((m_countPendingTasks + m_countActiveTasks) > m_countThreads) && (m_countThreads < m_maxNumThreads)) {
+
+            // Add a worker
+            std::unique_lock<std::mutex> lockThreads(m_tokenThreads);
+            if (m_stopping) {
+                return;
+            }
+
+            std::thread th(&ThreadPool::taskRunner, this);
+            pthread_setname_np(th.native_handle(), "worker");
+            m_threads.emplace_back(std::move(th));
+            m_countThreads++;
+        }
+    }
+
+    // Notify one thread that new task is available
+    m_cvTasks.notify_one();
+}
+
+inline size_t ThreadPool::getCountPendingTasks()
+{
+    // We need to count the threads
+    return m_countPendingTasks;
+}
+
+inline size_t ThreadPool::getCountActiveTasks()
+{
+    return m_countActiveTasks;
 }
 
 inline void ThreadPool::stop(Stop mode)
 {
-    if (!m_stop) {
-        m_watcher.stop();
-        if (mode == Stop::WaitForQueue) {
-            std::unique_lock<std::mutex> lock(m_mutex, std::defer_lock);
-            m_cv.wait(lock, [&]() {
-                return m_tasks.empty();
-            });
-        }
-
-        m_stop = true;
-        m_cv.notify_all();
-
-        for (std::thread& thread : m_threads) {
-            if (thread.joinable()) {
-                thread.join();
-            }
-        }
-        m_threads.clear();
-    }
+    requestStop(mode);
+    waitUntilStopped();
 }
 
-inline void ThreadPool::allocThread()
-{
-    using namespace std::chrono_literals;
-
-    auto& th = m_threads.emplace_back(std::thread([&]() {
-        while (!m_stop) {
-            std::shared_ptr<ITask> task;
-            {
-                std::unique_lock<std::mutex> lock(m_mutex);
-
-                m_cv.wait_for(lock, 1s, [&]() {
-                    return !m_tasks.empty() || m_stop;
-                });
-
-                if (!m_stop && m_tasks.empty() && m_threads.size() > m_minNumThreads) {
-                    m_watcher.clear(std::this_thread::get_id());
-                    return;
-                }
-
-                if (m_stop) {
-                    return;
-                }
-
-                if (!m_tasks.empty()) {
-                    task = std::move(m_tasks.front());
-                    m_tasks.pop_front();
-                }
-            }
-            m_cv.notify_all();
-            if (task) {
-                task->started();
-                (*task)();
-                task->stopped();
-            }
-        }
-    }));
-    pthread_setname_np(th.native_handle(), "worker");
-}
-
-template <typename T, typename... Args>
-ITask& ThreadPool::pushWorker(Args&&... args)
-{
-    std::shared_ptr<T> task;
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_tasks.size() >= m_threads.size()) {
-            allocThread();
-        }
-        task = std::make_shared<T>(std::forward<Args>(args)...);
-        m_tasks.emplace_back(task);
-    }
-    m_cv.notify_all();
-    return *task;
-}
-
-template <typename Func, typename... Args>
-ITask& ThreadPool::pushWorker(Func&& fnc, Args&&... args)
-{
-    std::shared_ptr<details::GenericTask> task;
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_tasks.size() >= m_threads.size()) {
-            allocThread();
-        }
-        task = std::make_shared<details::GenericTask>(std::move(fnc), std::forward<Args>(args)...);
-        m_tasks.emplace_back(task);
-    }
-    m_cv.notify_all();
-    return *task;
-}
-
-// ===========================================================================================================
-
-template <typename Func>
-details::PoolWatcher::PoolWatcher(Func&& clearFunc)
-    : m_clearFunc(clearFunc)
-    , m_thread(&PoolWatcher::run, this)
-{
-    pthread_setname_np(m_thread.native_handle(), "pool watcher");
-}
-
-inline details::PoolWatcher::~PoolWatcher()
-{
-    stop();
-}
-
-inline void details::PoolWatcher::run()
-{
-    while (!m_stop) {
-        std::unique_lock<std::mutex> lock(m_mutex);
-
-        m_cv.wait(lock, [&]() {
-            return m_stop || m_toClear;
-        });
-
-        if (m_stop) {
-            return;
-        }
-
-        if (m_toClear) {
-            m_clearFunc(*m_toClear);
-            m_toClear = std::nullopt;
-        }
-    }
-}
-
-inline void details::PoolWatcher::clear(std::thread::id id)
+inline void ThreadPool::requestStop(Stop mode)
 {
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_toClear = id;
+        std::unique_lock<std::mutex> lockThread(m_tokenThreads);
+        m_stopping = true;
+
+        // When we want to do hard stop, we cancel all the thread
+        if (mode == Stop::Cancel) {
+            m_canceled = true;
+            for (auto& th : m_threads) {
+                pthread_cancel(th.native_handle());
+            }
+            m_countActiveTasks = 0;
+        }
     }
-    m_cv.notify_one();
+
+    if (mode == Stop::Immedialy) {
+        // We need to stop immediatly, so we empty the queue (we need to get the token to modify the queue)
+        std::unique_lock<std::mutex> lockTasks(m_tokenTasks);
+        m_countPendingTasks = m_countPendingTasks - m_tasks.size();
+        m_tasks.clear();
+    }
+
+    m_cvTasks.notify_all();
 }
 
-inline void details::PoolWatcher::stop()
+inline void ThreadPool::waitUntilStopped()
 {
-    if (!m_stop) {
+    if (!m_stopping) {
+        throw std::runtime_error("Stop hasn't been requested");
+    }
+
+    // Wait that every thread pool finish => no need of mutex because we do not accept tasks
+    for (auto threadIt = m_threads.begin(); threadIt != m_threads.end(); /*it++*/) {
+
+        // Join the thread that can be join
+        if (threadIt->joinable()) {
+            threadIt->join();
+        }
+        threadIt = m_threads.erase(threadIt);
+    }
+}
+
+inline void ThreadPool::taskRunner()
+{
+    // We stop the task runner with notifications
+    while (true) {
+        std::shared_ptr<ITask> task;
+
+        // Try to find a task to achieve in the queue (we need to get the token to modify the queue)
         {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            m_stop = true;
+            std::unique_lock<std::mutex> lockTasks(m_tokenTasks);
+
+            // We wait for something to do
+            m_cvTasks.wait(lockTasks, [this]() {
+                return !m_tasks.empty() || m_stopping;
+            });
+
+            if (m_stopping && m_tasks.empty()) {
+                // We do not accept new task when we stop and if is nothing more to do. We terminate the task runner.
+                return;
+            }
+
+            task = std::move(m_tasks.front());
+            m_tasks.pop_front();
+            m_countPendingTasks--;
         }
-        m_cv.notify_one();
-        if (m_thread.joinable()) {
-            m_thread.join();
+
+        // Execute the task
+        if (task) {
+            m_countActiveTasks++;
+            task->started();
+
+            try {
+                (*task)();
+            } catch (...) {
+                if (m_canceled) {
+                    // If we are canceled, the exception should reach the thread handler
+                    throw;
+                }
+                // Transfer the exception to the task
+                task->m_eptr = std::current_exception();
+            }
+
+            task->stopped();
+            m_countActiveTasks--;
+        }
+
+        // Update the worker number if needed
+        {
+            // If min and max are the same update are not needed
+            if (m_minNumThreads == m_maxNumThreads) {
+                continue;
+            }
+
+            // We are asked to stop, no need to update worker
+            if (m_stopping) {
+                continue;
+            }
+
+            // When do we need to remove a worker?
+            //   If the queue is empty => Nothing more for this worker
+            //   And we didn't reach the minimum number of worker
+            if ((m_countPendingTasks == 0) && (m_countThreads > m_minNumThreads)) {
+
+                // Get the thread lock and check if we are still asked to run
+                std::unique_lock<std::mutex> lockThread(m_tokenThreads);
+                if (m_stopping) {
+                    continue;
+                }
+
+                // I need to find myself in the list
+                auto myId = std::this_thread::get_id();
+
+                for (auto threadIt = m_threads.begin(); threadIt != m_threads.end(); threadIt++) {
+                    if (threadIt->get_id() == myId) {
+
+                        // Detach me before to remove me from the list (Avoid to create zombie)
+                        threadIt->detach();
+                        m_countThreads--;
+                        m_threads.erase(threadIt);
+
+                        // Terminate the thread
+                        return;
+                    }
+                }
+            }
         }
     }
 }
