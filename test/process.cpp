@@ -115,7 +115,7 @@ TEST_CASE("Process basic tests")
     SECTION("Run process static")
     {
         std::string out, err;
-        auto ret = fty::Process::run("echo", {"-n", "hello out"}, out);
+        auto        ret = fty::Process::run("echo", {"-n", "hello out"}, out);
         REQUIRE(ret);
         CHECK(*ret == 0);
         CHECK(out == "hello out");
@@ -133,17 +133,17 @@ TEST_CASE("Process basic tests")
 
     SECTION("Process finished before timeout")
     {
-        auto process = fty::Process("sh", {"-c", "sleep 2s"});
-        std::chrono::time_point<std::chrono::system_clock> start = std::chrono::system_clock::now();
+        auto                                               process = fty::Process("sh", {"-c", "sleep 2s"});
+        std::chrono::time_point<std::chrono::system_clock> start   = std::chrono::system_clock::now();
 
         if (auto pid = process.run()) {
-            auto status = process.wait(5*1000);
+            auto status = process.wait(5 * 1000);
 
             std::chrono::time_point<std::chrono::system_clock> stopped = std::chrono::system_clock::now();
             auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(stopped - start);
 
-            CHECK(durationMs.count() > 2000); //check that sleep happened
-            CHECK(durationMs.count() < 5000); //check that we left before timeout
+            CHECK(durationMs.count() > 2000); // check that sleep happened
+            CHECK(durationMs.count() < 5000); // check that we left before timeout
 
             std::cout << "Duration of exception: " << durationMs.count() << std::endl;
 
@@ -153,12 +153,11 @@ TEST_CASE("Process basic tests")
                 FAIL(status.error());
             }
             CHECK(!process.exists());
-            
+
         } else {
             FAIL(pid.error());
         }
     }
-
 }
 
 TEST_CASE("Write in process 2 time")
@@ -218,7 +217,7 @@ TEST_CASE("Launch 2 process at the time with launcher in separeted thread")
 {
     using namespace std::chrono_literals;
 
-    auto func = [](int timeout = -1){
+    auto func = [](int timeout = -1) {
         auto process = fty::Process("sh", {"-c", "sleep 3s"});
         auto pid     = process.run();
         CHECK(pid);
@@ -253,4 +252,3 @@ TEST_CASE("Process with Huge data")
     CHECK(pid);
     CHECK(process.readAllStandardOutput().size());
 }
-
