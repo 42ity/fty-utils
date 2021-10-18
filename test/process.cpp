@@ -17,6 +17,8 @@
 #include "fty/string-utils.h"
 #include <catch2/catch.hpp>
 #include <iostream>
+#include <chrono>
+#include <thread>
 
 TEST_CASE("Process")
 {
@@ -82,30 +84,30 @@ TEST_CASE("Process")
         CHECK("hello" == fty::trimmed(process.readAllStandardOutput()));
     }
 
-
-    SECTION("Kill process")
+    SECTION("Interrupt process")
     {
-        auto process = fty::Process("sh", {"-c", "sleep 1000"});
+        auto process = fty::Process("sh", {"-c", "sleep 2s"});
 
         if (auto pid = process.run()) {
             auto status = process.wait(10);
             CHECK(!status);
             CHECK("timeout" == status.error());
-            process.kill();
+            process.interrupt();
             CHECK(!process.exists());
         } else {
             FAIL(pid.error());
         }
     }
 
-    SECTION("Interrupt process")
+    SECTION("Kill process")
     {
-        auto process = fty::Process("/bin/cat", {});
+        auto process = fty::Process("sh", {"-c", "sleep 2s"});
 
         if (auto pid = process.run()) {
-            auto status = process.wait(100);
+            auto status = process.wait(10);
             CHECK(!status);
-            process.interrupt();
+            CHECK("timeout" == status.error());
+            process.kill();
             CHECK(!process.exists());
         } else {
             FAIL(pid.error());
@@ -129,6 +131,34 @@ TEST_CASE("Process")
         auto ret3 = fty::Process::run("echo", {"-n", "hello"});
         REQUIRE(ret2);
         CHECK(*ret2 == 0);
+    }
+
+    SECTION("Process finished before timeout")
+    {
+        auto process = fty::Process("sh", {"-c", "sleep 2s"});
+        std::chrono::time_point<std::chrono::system_clock> start = std::chrono::system_clock::now();
+
+        if (auto pid = process.run()) {
+            auto status = process.wait(5*1000);
+
+            std::chrono::time_point<std::chrono::system_clock> stopped = std::chrono::system_clock::now();
+            auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(stopped - start);
+
+            CHECK(durationMs.count() > 2000); //check that sleep happened
+            CHECK(durationMs.count() < 5000); //check that we left before timeout
+
+            std::cout << "Duration of exception: " << durationMs.count() << std::endl;
+
+            if (status) {
+                CHECK(*status == 0);
+            } else {
+                FAIL(status.error());
+            }
+            CHECK(!process.exists());
+            
+        } else {
+            FAIL(pid.error());
+        }
     }
 
 }
