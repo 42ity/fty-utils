@@ -14,12 +14,14 @@
     ========================================================================
 */
 #pragma once
+#include <chrono>
 #include <fcntl.h>
 #include <fty/expected.h>
 #include <fty/flags.h>
 #include <iostream>
 #include <poll.h>
 #include <spawn.h>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 #include <wait.h>
@@ -45,7 +47,7 @@ public:
     ~Process();
 
     Expected<pid_t> run();
-    Expected<int>   wait(int milliseconds = -1);
+    Expected<int>   wait(int timeoutMs = -1, uint32_t waitCycleDurationMs = 100);
 
     std::string readAllStandardError(int milliseconds = -1);
     std::string readAllStandardOutput(int milliseconds = -1);
@@ -214,55 +216,72 @@ inline Expected<pid_t> Process::run()
     return m_pid;
 }
 
-inline Expected<int> Process::wait(int milliseconds)
+inline Expected<int> Process::wait(int timeoutMs, uint32_t waitCycleDurationMs)
 {
     closeWriteChannel();
     int status = 0;
-    if (milliseconds >= 0) {
-        sigset_t childMask, oldMask;
-        sigemptyset(&childMask);
-        sigaddset(&childMask, SIGCHLD);
 
-        if (sigprocmask(SIG_BLOCK, &childMask, &oldMask) == -1) {
-            return unexpected("sigprocmask failed: {}", strerror(errno));
+    // Wait with timeout is hard to do has the OS does not provid direct solution for it.
+    // We will do active waiting with step...
+    // This solution is thread safe
+    if (timeoutMs >= 0) {
+
+        assert(waitCycleDurationMs);
+        if (waitCycleDurationMs == 0) {
+            return unexpected("Cycle duration has to be bigger than 0");
         }
 
-        timespec ts;
-        ts.tv_sec  = milliseconds / 1000;
-        ts.tv_nsec = (milliseconds % 1000) * 1000000;
+        // Better to use number of cycle to wait, than using std::chrono, which require a syscall to have exact time.
+        uint32_t numberOfCycles = 0;
 
-        int res;
-        do {
-            res = sigtimedwait(&childMask, nullptr, &ts);
-        } while (res == -1 && errno == EINTR);
-
-        if (res == -1 && errno == EAGAIN) {
-            return unexpected("timeout");
-        } else if (res == -1) {
-            return unexpected("sigtimedwait failed: {}", strerror(errno));
+        // Number of cycle is timeout (ms) / by the cycle duration (ms) and rounded to upper value
+        uint32_t maxNumberOfCycles = static_cast<uint32_t>(timeoutMs) / waitCycleDurationMs;
+        if (static_cast<uint32_t>(timeoutMs) % waitCycleDurationMs > 0) {
+            maxNumberOfCycles++;
         }
 
-        if (sigprocmask(SIG_SETMASK, &oldMask, nullptr) == -1) {
-            return unexpected("sigprocmask failed: {}", strerror(errno));
-        }
+        pid_t pid;
+        while (true) // endless loop
+        {
+            // Check if the process is stopped
+            if ((pid = waitpid(m_pid, &status, WNOHANG)) == -1) {
+                return unexpected("waitpid error");
+            }
 
-        pid_t childPid = waitpid(m_pid, &status, WNOHANG);
-        if (childPid != m_pid) {
-            if (childPid != -1) {
-                return unexpected("Waiting for pid {}, got pid {} instead\n", m_pid, childPid);
+            // Child is still running
+            if (pid == 0) {
+                // Child is still running
+
+                // Check if we waited enough
+                if (numberOfCycles > maxNumberOfCycles) {
+                    return unexpected("timeout");
+                }
+
+                std::this_thread::sleep_for(std::chrono::milliseconds(waitCycleDurationMs));
+                numberOfCycles++;
             } else {
-                return unexpected("waitpid failed: {}", strerror(errno));
+                // Idenfity why we returned
+                if (WIFEXITED(status)) {
+                    m_pid = 0;
+                    return WEXITSTATUS(status);
+                } else if (WIFSIGNALED(status)) {
+                    m_pid = 0;
+                    return WTERMSIG(status);
+                } else if (WIFSTOPPED(status)) {
+                    m_pid = 0;
+                    return WSTOPSIG(status);
+                }
             }
         }
-        m_pid = 0;
-        return status;
     }
 
+    // We wait until the end of the program -> wait pid can return for several reason, and we want to get only when our pid returns
     do {
         if (auto res = waitpid(m_pid, &status, WUNTRACED | WCONTINUED); res == -1) {
-            return unexpected("waitpid");
+            return unexpected("waitpid error");
         }
 
+        // Idenfity why we returned
         if (WIFEXITED(status)) {
             m_pid = 0;
             return WEXITSTATUS(status);
@@ -274,6 +293,7 @@ inline Expected<int> Process::wait(int milliseconds)
             return WSTOPSIG(status);
         }
     } while (!WIFEXITED(status) && !WIFSIGNALED(status));
+
     return unexpected("something wrong");
 }
 
@@ -300,8 +320,8 @@ inline std::string readFromFd(int fd, int milliseconds, int maxretry = 2)
     int n_flags = o_flags | O_NONBLOCK;
     fcntl(fd, F_SETFL, n_flags);
 
-    while(true) {
-        if (int retval = select(fd+1, &readSet, nullptr, nullptr, &tv); retval > 0) {
+    while (true) {
+        if (int retval = select(fd + 1, &readSet, nullptr, nullptr, &tv); retval > 0) {
             if (FD_ISSET(fd, &readSet)) {
                 if (auto bytesRead = read(fd, &buffer[0], buffer.size()); bytesRead > 0) {
                     output += std::string(buffer.data(), size_t(bytesRead));
@@ -407,8 +427,8 @@ inline Expected<int> Process::run(const std::string& cmd, const Arguments& args,
     out      = proc.readAllStandardOutput();
     err      = proc.readAllStandardError();
     auto ret = proc.wait();
-    out      += proc.readAllStandardOutput();
-    err      += proc.readAllStandardError();
+    out += proc.readAllStandardOutput();
+    err += proc.readAllStandardError();
     if (ret) {
         return *ret;
     } else {
@@ -424,7 +444,7 @@ inline Expected<int> Process::run(const std::string& cmd, const Arguments& args,
     }
     out      = proc.readAllStandardOutput();
     auto ret = proc.wait();
-    out      += proc.readAllStandardOutput();
+    out += proc.readAllStandardOutput();
     if (ret) {
         return *ret;
     } else {
