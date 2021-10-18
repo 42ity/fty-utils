@@ -236,14 +236,14 @@ inline Expected<int> Process::wait(int milliseconds)
             res = sigtimedwait(&childMask, nullptr, &ts);
         } while (res == -1 && errno == EINTR);
 
+        if (sigprocmask(SIG_SETMASK, &oldMask, nullptr) == -1) {
+            return unexpected("sigprocmask failed: {}", strerror(errno));
+        }
+
         if (res == -1 && errno == EAGAIN) {
             return unexpected("timeout");
         } else if (res == -1) {
             return unexpected("sigtimedwait failed: {}", strerror(errno));
-        }
-
-        if (sigprocmask(SIG_SETMASK, &oldMask, nullptr) == -1) {
-            return unexpected("sigprocmask failed: {}", strerror(errno));
         }
 
         pid_t childPid = waitpid(m_pid, &status, WNOHANG);
