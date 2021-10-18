@@ -20,7 +20,7 @@
 #include <chrono>
 #include <thread>
 
-TEST_CASE("Process")
+TEST_CASE("Process basic tests")
 {
     SECTION("Run process")
     {
@@ -163,7 +163,7 @@ TEST_CASE("Process")
 
 }
 
-TEST_CASE("Write process 2")
+TEST_CASE("Write in process 2 time")
 {
     auto process = fty::Process("/bin/cat");
     auto pid     = process.run();
@@ -175,7 +175,79 @@ TEST_CASE("Write process 2")
     CHECK("hello2" == fty::trimmed(process.readAllStandardOutput()));
 }
 
-TEST_CASE("Huge")
+TEST_CASE("Launch 2 process at the time")
+{
+    SECTION("Process finished before timeout")
+    {
+        auto process1 = fty::Process("sh", {"-c", "sleep 1s"});
+        auto process2 = fty::Process("sh", {"-c", "sleep 1s"});
+        auto pid1     = process1.run();
+        auto pid2     = process2.run();
+        CHECK(pid1);
+        CHECK(pid2);
+        CHECK(*pid1 != *pid2);
+        CHECK(process1.wait());
+        CHECK(process2.wait());
+    }
+
+    SECTION("Process finished after timeout")
+    {
+        auto process1 = fty::Process("sh", {"-c", "sleep 1s"});
+        auto process2 = fty::Process("sh", {"-c", "sleep 1s"});
+        auto pid1     = process1.run();
+        auto pid2     = process2.run();
+        CHECK(pid1);
+        CHECK(pid2);
+        CHECK(*pid1 != *pid2);
+        auto status1 = process1.wait(30000);
+        auto status2 = process2.wait(30000);
+
+        if (status1) {
+            CHECK(*status1 == 0);
+        } else {
+            FAIL(status1.error());
+        }
+
+        if (status2) {
+            CHECK(*status2 == 0);
+        } else {
+            FAIL(status2.error());
+        }
+    }
+}
+
+TEST_CASE("Launch 2 process at the time with launcher in separeted thread")
+{
+    using namespace std::chrono_literals;
+
+    auto func = [](int timeout = -1){
+        auto process = fty::Process("sh", {"-c", "sleep 3s"});
+        auto pid     = process.run();
+        CHECK(pid);
+        std::this_thread::sleep_for(1s);
+        CHECK(process.wait(timeout));
+    };
+
+    SECTION("Process finished before timeout")
+    {
+        std::thread t1(func);
+        std::thread t2(func);
+        t1.join();
+        t2.join();
+        CHECK(true);
+    }
+
+    SECTION("Process finished after timeout")
+    {
+        std::thread t1(func, 50000);
+        std::thread t2(func, 50000);
+        t1.join();
+        t2.join();
+        CHECK(true);
+    }
+}
+
+TEST_CASE("Process with Huge data")
 {
     auto process = fty::Process("dpkg", {"-l"});
     auto pid     = process.run();
