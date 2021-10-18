@@ -17,8 +17,6 @@
 #include "fty/string-utils.h"
 #include <catch2/catch.hpp>
 #include <iostream>
-#include <chrono>
-#include <thread>
 
 TEST_CASE("Process basic tests")
 {
