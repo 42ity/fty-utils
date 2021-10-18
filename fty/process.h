@@ -226,6 +226,7 @@ inline Expected<int> Process::wait(int timeoutMs, uint32_t waitCycleDurationMs)
     // This solution is thread safe
     if (timeoutMs >= 0) {
 
+        assert(waitCycleDurationMs);
         if (waitCycleDurationMs == 0) {
             return unexpected("Cycle duration has to be bigger than 0");
         }
