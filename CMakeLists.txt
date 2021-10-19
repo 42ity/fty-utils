@@ -30,8 +30,18 @@ etn_target(interface ${PROJECT_NAME}
 )
 
 ##############################################################################################################
-
-if (BUILD_TESTING)
-    enable_testing()
-    add_subdirectory(test)
-endif()
+etn_test_target(${PROJECT_NAME}
+    SOURCES
+        test/main.cpp
+        test/split.cpp
+        test/convert.cpp
+        test/expected.cpp
+        test/events.cpp
+        test/process.cpp
+        test/translate.cpp
+        test/timer.cpp
+        test/thread-pool.cpp
+        test/command-line.cpp
+    USES
+        pthread
+)
