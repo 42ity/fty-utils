@@ -260,17 +260,17 @@ inline Expected<int> Process::wait(int timeoutMs, uint32_t waitCycleDurationMs)
                 std::this_thread::sleep_for(std::chrono::milliseconds(waitCycleDurationMs));
                 numberOfCycles++;
             } else {
+                m_pid = 0;
                 // Idenfity why we returned
                 if (WIFEXITED(status)) {
-                    m_pid = 0;
                     return WEXITSTATUS(status);
                 } else if (WIFSIGNALED(status)) {
-                    m_pid = 0;
                     return WTERMSIG(status);
                 } else if (WIFSTOPPED(status)) {
-                    m_pid = 0;
                     return WSTOPSIG(status);
                 }
+                
+                return unexpected("Impossible to identify reason for stop");
             }
         }
     }
