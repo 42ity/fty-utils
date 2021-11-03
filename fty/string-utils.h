@@ -85,11 +85,11 @@ std::tuple<T...> split(
     const std::string& str, const std::regex& delim, SplitOption opt = SplitOption::KeepEmpty | SplitOption::Trim);
 
 /// Converts string to upper case
-/// @param str string to convert
+/// @param src string to convert
 void toupper(std::string& src);
 
 /// Converts string to lower case
-/// @param str string to convert
+/// @param src string to convert
 void tolower(std::string& src);
 
 // ===========================================================================================================

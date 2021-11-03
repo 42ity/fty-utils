@@ -68,7 +68,7 @@ TEST_CASE("ThreadPool fixed workers - exception in task")
     {
     public:
         inline MyException()
-            : std::runtime_error("Test"){};
+            : std::runtime_error("Test"){}
     };
 
     auto functionException = [&](int num) {

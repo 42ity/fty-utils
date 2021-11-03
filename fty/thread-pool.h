@@ -233,7 +233,7 @@ std::shared_ptr<ITask> ThreadPool::pushWorker(Func&& fnc, Args&&... args)
     task = std::make_shared<details::GenericTask>(std::move(fnc), std::forward<Args>(args)...);
 
     addTask(task);
-    return task;
+    return std::move(task);
 }
 
 inline void ThreadPool::addTask(std::shared_ptr<ITask> task)
