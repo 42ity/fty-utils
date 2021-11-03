@@ -253,7 +253,7 @@ inline Expected<bool> CommandLine::parse(int argc, char** argv)
     //Build the string manually
     std::vector<std::string> args;
     
-    for(int argPos = 0; argPos < argc; argPos++){
+    for(int argPos = 1; argPos < argc; argPos++){
         args.push_back(std::string(argv[argPos]));
     }
     

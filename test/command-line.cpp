@@ -54,12 +54,17 @@ TEST_CASE("Command line without arg")
         {"--string", optionString,  "Option string"},
         {"--help",   help,          "Show this help"}
     });
+    // clang-format on
 
-        
+
     char  arg0[]  = "./test";
     char* argv1[] = {arg0};
 
-    CHECK(cmd.parse(1, argv1));
+    if (!cmd.parse(1, argv1)) {
+        FAIL(cmd.error());
+    }
+
+    CHECK(cmd.positionalArgs().size() == 0);
 
     CHECK(help == false);
     CHECK(optionBool == false);
@@ -68,12 +73,6 @@ TEST_CASE("Command line without arg")
     help         = true;
     optionBool   = true;
     optionString = "Default value";
-
-    CHECK(cmd.parse(1, argv1));
-
-    CHECK(help == true);
-    CHECK(optionBool == true);
-    CHECK(optionString == "Default value");
 }
 
 TEST_CASE("Command line with arg")
@@ -88,19 +87,54 @@ TEST_CASE("Command line with arg")
         {"--string", optionString,  "Option string"},
         {"--help",   help,          "Show this help"}
     });
+    // clang-format on
 
-        
+
     char  arg0[]  = "./test";
     char  arg1[]  = "--bool";
     char  arg2[]  = "--string=Test string";
     char  arg3[]  = "--help";
     char* argv1[] = {arg0, arg1, arg2, arg3};
 
-    CHECK(cmd.parse(4, argv1));
+    if (!cmd.parse(4, argv1)) {
+        FAIL(cmd.error());
+    }
 
-    CHECK(cmd.error() == "");
+    CHECK(cmd.positionalArgs().size() == 0);
 
     CHECK(help == true);
     CHECK(optionBool == true);
     CHECK(optionString == "Test string");
+}
+
+TEST_CASE("Argument parse")
+{
+    bool        help         = false;
+    bool        optionBool   = false;
+    std::string optionString = "Default value";
+
+    // clang-format off
+    fty::CommandLine cmd("Test command line", {
+        {"--bool",   optionBool,    "Option bool"},
+        {"--string", optionString,  "Option string"},
+        {"--help",   help,          "Show this help"}
+    });
+    // clang-format on
+
+    char  arg0[]  = "./test";
+    char  arg1[]  = "hello";
+    char  arg2[]  = "--bool";
+    char  arg3[]  = "--string=Test string";
+    char  arg4[]  = "--help";
+    char  arg5[]  = "end";
+    char* argv1[] = {arg0, arg1, arg2, arg3, arg4, arg5};
+
+    if (!cmd.parse(6, argv1)) {
+        FAIL(cmd.error());
+    }
+
+    CHECK(cmd.positionalArgs().size() == 2);
+
+    CHECK(cmd.positionalArgs()[0] == "hello");
+    CHECK(cmd.positionalArgs()[1] == "end");
 }
