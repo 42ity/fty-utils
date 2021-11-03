@@ -175,7 +175,7 @@ TEST_CASE("Expected")
         auto funcTriggeredError = []() -> fty::Expected<void, std::exception_ptr> {
             try {
                 throw std::runtime_error("Error message");
-            } catch (std::exception& e) {
+            } catch (const std::exception&) {
                 return fty::unexpected(std::current_exception());
             }
         };
