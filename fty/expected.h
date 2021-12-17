@@ -276,7 +276,7 @@ inline constexpr bool Expected<void, ErrorT>::isValid() const noexcept
 template <typename ErrorT>
 inline constexpr Expected<void, ErrorT>::operator bool() const noexcept
 {
-    return !m_isError;
+    return isValid();
 }
 
 template <typename ErrorT>
