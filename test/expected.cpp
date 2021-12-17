@@ -15,18 +15,35 @@
 */
 #include "fty/expected.h"
 #include <catch2/catch.hpp>
+#include <iostream>
+#include <map>
 
 struct St
 {
     St()          = default;
     St(const St&) = delete;
-    St& operator=(const St&) = delete;
+    St& operator=(const St&) = default;
     St(St&&)                 = default;
 
     bool func()
     {
         return true;
     }
+};
+
+struct Msg
+{
+    Msg()           = default;
+    Msg(const Msg&) = default;
+    Msg& operator=(const Msg&) = default;
+    Msg(Msg&&)                 = default;
+
+    size_t size()
+    {
+      return m_data.size();
+    }
+
+    std::map<std::string, std::string> m_data;
 };
 
 TEST_CASE("Expected")
@@ -184,5 +201,51 @@ TEST_CASE("Expected")
         CHECK(!resTriggeredError);
 
         REQUIRE_THROWS_AS(rethrow_exception(resTriggeredError.error()), std::runtime_error);
+    }
+
+    SECTION("Tests asign operator")
+    {
+        fty::Expected<void> result;
+        fty::Expected<void> result2;
+        fty::Expected<void> result3;
+        auto                it = fty::Expected<void>();
+        CHECK(it);
+
+        auto func = []() -> fty::Expected<void> {
+            return {};
+        };
+        auto func2 = []() -> fty::Expected<void> {
+            return fty::unexpected("some error");
+        };
+        result = func();
+        CHECK(result);
+        result2 = result;
+        CHECK(result2);
+        result3 = func2();
+        CHECK(!result3);
+        CHECK("some error" == result3.error());
+    }
+
+    SECTION("Tests asign operator")
+    {
+        auto func = []() -> fty::Expected<Msg> {
+            Msg msg;
+            msg.m_data.emplace("keyMsg", "valueMsg");
+            return msg;
+        };
+
+        auto funcUnexpec = []() -> fty::Expected<Msg> {
+            return fty::unexpected("wrong");
+        };
+
+        fty::Expected<Msg> msg;
+        msg = func();
+        CHECK(msg->size() == 1);
+        CHECK((*msg).size() == 1);
+
+        fty::Expected<Msg> unexpec;
+        unexpec = funcUnexpec();
+        CHECK(!unexpec);
+        CHECK("wrong" == unexpec.error());
     }
 }
