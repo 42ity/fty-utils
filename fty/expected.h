@@ -19,6 +19,8 @@
 #include <fmt/format.h>
 #include <optional>
 #include <string>
+#include <type_traits>
+#include <variant>
 
 namespace fty {
 
@@ -33,7 +35,7 @@ template <typename T, typename ErrorT = std::string>
 class Expected
 {
 public:
-    constexpr Expected() = delete;
+    constexpr Expected() = default;
     constexpr Expected(const T& value) noexcept;
     constexpr Expected(T&& value) noexcept;
     constexpr Expected(Expected&& other) noexcept;
@@ -41,47 +43,48 @@ public:
     constexpr Expected(Unexpected<UnErrorT>&& unex) noexcept;
     template <typename UnErrorT>
     constexpr Expected(const Unexpected<UnErrorT>& unex) noexcept;
-    ~Expected();
+    ~Expected() = default;
 
-    Expected(const Expected&) = delete;
-    Expected& operator=(const Expected&) = delete;
+    Expected(const Expected& other) = default;
+    Expected& operator=(const Expected& other) = default;
 
-    constexpr const T&      value() const& noexcept;
-    constexpr T&            value() & noexcept;
-    constexpr const T&&     value() const&& noexcept;
-    constexpr T&&           value() && noexcept;
-    constexpr const ErrorT& error() const& noexcept;
+    constexpr const T&      value() const&;
+    constexpr T&            value() &;
+    constexpr const T&&     value() const&&;
+    constexpr T&&           value() &&;
+    constexpr const ErrorT& error() const&;
 
     constexpr bool     isValid() const noexcept;
     explicit constexpr operator bool() const noexcept;
 
-    constexpr const T&  operator*() const& noexcept;
-    constexpr T&        operator*() & noexcept;
-    constexpr const T&& operator*() const&& noexcept;
-    constexpr T&&       operator*() && noexcept;
+    constexpr const T&  operator*() const&;
+    constexpr T&        operator*() &;
+    constexpr const T&& operator*() const&&;
+    constexpr T&&       operator*() &&;
     constexpr const T*  operator->() const noexcept;
     constexpr T*        operator->() noexcept;
 
 private:
-    union {
-        T      m_value;
-        ErrorT m_error;
-    };
-    bool m_isError = false;
+    std::variant<T, ErrorT> m_value;
 };
 
 template <typename ErrorT>
 class Expected<void, ErrorT>
 {
 public:
-    Expected() noexcept;
+    Expected() noexcept = default ;
     template <typename UnErrorT>
     Expected(Unexpected<UnErrorT>&& unex) noexcept;
     template <typename UnErrorT>
     Expected(const Unexpected<UnErrorT>& unex) noexcept;
 
-    Expected(const Expected&) = delete;
-    Expected& operator=(const Expected&) = delete;
+    Expected(const Expected& other)
+    {
+        m_error   = std::move(other.error());
+        m_isError = other.m_isError;
+    };
+
+    Expected& operator=(const Expected&) = default;
 
     constexpr bool isValid() const noexcept;
     constexpr      operator bool() const noexcept;
@@ -150,136 +153,103 @@ constexpr Expected<T, ErrorT>::Expected(T&& value) noexcept
 template <typename T, typename ErrorT>
 constexpr Expected<T, ErrorT>::Expected(Expected&& other) noexcept
 {
-    if (other.m_isError) {
-        m_isError = true;
-        m_error   = std::move(other.m_error);
-    } else {
-        m_value = std::move(other.m_value);
-    }
+    m_value = std::move(other.m_value);
 }
 
 template <typename T, typename ErrorT>
 template <typename UnErrorT>
 constexpr Expected<T, ErrorT>::Expected(Unexpected<UnErrorT>&& unex) noexcept
-    : m_error(std::move(unex.message))
-    , m_isError(true)
+    : m_value(std::move(unex.message))
 {
 }
 
 template <typename T, typename ErrorT>
 template <typename UnErrorT>
 constexpr Expected<T, ErrorT>::Expected(const Unexpected<UnErrorT>& unex) noexcept
-    : m_error(unex.message)
-    , m_isError(true)
+    : m_value(unex.message)
 {
 }
 
 template <typename T, typename ErrorT>
-Expected<T, ErrorT>::~Expected()
+constexpr const T& Expected<T, ErrorT>::value() const&
 {
-    if (m_isError) {
-        m_error.~ErrorT();
-    } else {
-        m_value.~T();
-    }
+  return std::get<T>(m_value);
 }
 
 template <typename T, typename ErrorT>
-constexpr const T& Expected<T, ErrorT>::value() const& noexcept
+constexpr T& Expected<T, ErrorT>::value() &
 {
-    assert(!m_isError);
-    return m_value;
+  return std::get<T>(m_value);
 }
 
 template <typename T, typename ErrorT>
-constexpr T& Expected<T, ErrorT>::value() & noexcept
+constexpr const T&& Expected<T, ErrorT>::value() const&&
 {
-    assert(!m_isError);
-    return m_value;
+  return std::get<T>(m_value);
 }
 
 template <typename T, typename ErrorT>
-constexpr const T&& Expected<T, ErrorT>::value() const&& noexcept
+constexpr T&& Expected<T, ErrorT>::value() &&
 {
-    assert(!m_isError);
-    return std::move(m_value);
+  return std::get<T>(m_value);
 }
 
 template <typename T, typename ErrorT>
-constexpr T&& Expected<T, ErrorT>::value() && noexcept
+constexpr const ErrorT& Expected<T, ErrorT>::error() const&
 {
-    assert(!m_isError);
-    return std::move(m_value);
-}
-
-template <typename T, typename ErrorT>
-constexpr const ErrorT& Expected<T, ErrorT>::error() const& noexcept
-{
-    assert(m_isError);
-    return m_error;
+  assert(std::holds_alternative<ErrorT>(m_value));
+  return std::get<ErrorT>(m_value);
 }
 
 template <typename T, typename ErrorT>
 constexpr bool Expected<T, ErrorT>::isValid() const noexcept
 {
-    return !m_isError;
+  return std::holds_alternative<T>(m_value);
 }
 
 template <typename T, typename ErrorT>
 constexpr Expected<T, ErrorT>::operator bool() const noexcept
 {
-    return !m_isError;
+  return isValid();
 }
 
 template <typename T, typename ErrorT>
-constexpr const T& Expected<T, ErrorT>::operator*() const& noexcept
+constexpr const T& Expected<T, ErrorT>::operator*() const&
 {
-    assert(!m_isError);
-    return m_value;
+  return std::get<T>(m_value);
 }
 
 template <typename T, typename ErrorT>
-constexpr T& Expected<T, ErrorT>::operator*() & noexcept
+constexpr T& Expected<T, ErrorT>::operator*() &
 {
-    assert(!m_isError);
-    return m_value;
+  return std::get<T>(m_value);
 }
 
 template <typename T, typename ErrorT>
-constexpr const T&& Expected<T, ErrorT>::operator*() const&& noexcept
+constexpr const T&& Expected<T, ErrorT>::operator*() const&&
 {
-    assert(!m_isError);
-    return std::move(m_value);
+  return std::get<T>(m_value);
 }
 
 template <typename T, typename ErrorT>
-constexpr T&& Expected<T, ErrorT>::operator*() && noexcept
+constexpr T&& Expected<T, ErrorT>::operator*() &&
 {
-    assert(!m_isError);
-    return std::move(m_value);
+  return std::get<T>(m_value);
 }
-
 
 template <typename T, typename ErrorT>
 constexpr const T* Expected<T, ErrorT>::operator->() const noexcept
 {
-    assert(!m_isError);
-    return &m_value;
+  return std::get_if<T>(&m_value);
 }
 
 template <typename T, typename ErrorT>
 constexpr T* Expected<T, ErrorT>::operator->() noexcept
 {
-    assert(!m_isError);
-    return &m_value;
+  return std::get_if<T>(&m_value);
 }
 
 // ===========================================================================================================
-
-template <typename ErrorT>
-inline Expected<void, ErrorT>::Expected() noexcept
-{
-}
 
 template <typename ErrorT>
 template <typename UnErrorT>
@@ -306,7 +276,7 @@ inline constexpr bool Expected<void, ErrorT>::isValid() const noexcept
 template <typename ErrorT>
 inline constexpr Expected<void, ErrorT>::operator bool() const noexcept
 {
-    return !m_isError;
+    return isValid();
 }
 
 template <typename ErrorT>
