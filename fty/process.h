@@ -144,6 +144,17 @@ inline Process::~Process()
     if (m_stdin) {
         closeWriteChannel();
     }
+
+    if(m_stdout) {
+        close(m_stdout);
+	    m_stdout = 0;
+    }
+    
+    if(m_stderr) {
+        close(m_stderr);
+	    m_stderr = 0;
+    }
+
     if (m_pid) {
         kill();
         assert(true && "Process was running, killed...");
@@ -156,64 +167,83 @@ inline Expected<pid_t> Process::run()
     int cerrPipe[2];
     int cinPipe[2];
 
-    posix_spawn_file_actions_t action;
-    posix_spawn_file_actions_init(&action);
+    try {
+        posix_spawn_file_actions_t action;
+        posix_spawn_file_actions_init(&action);
 
-    if (isSet(m_capture, Capture::Out)) {
-        if (pipe(coutPipe)) {
-            return unexpected("pipe returned an error");
+        if (isSet(m_capture, Capture::Out)) {
+            if (pipe(coutPipe)) {
+                throw std::runtime_error("pipe returned an error");
+            }
+            posix_spawn_file_actions_addclose(&action, coutPipe[0]);
+            posix_spawn_file_actions_adddup2(&action, coutPipe[1], STDOUT_FILENO);
+            // posix_spawn_file_actions_addclose(&action, coutPipe[1]);
         }
-        posix_spawn_file_actions_addclose(&action, coutPipe[0]);
-        posix_spawn_file_actions_adddup2(&action, coutPipe[1], STDOUT_FILENO);
-        // posix_spawn_file_actions_addclose(&action, coutPipe[1]);
-    }
 
-    if (isSet(m_capture, Capture::Err)) {
-        if (pipe(cerrPipe)) {
-            return unexpected("pipe returned an error");
+        if (isSet(m_capture, Capture::Err)) {
+            if (pipe(cerrPipe)) {
+                throw std::runtime_error("pipe returned an error");
+            }
+            posix_spawn_file_actions_addclose(&action, cerrPipe[0]);
+            posix_spawn_file_actions_adddup2(&action, cerrPipe[1], STDERR_FILENO);
+            // posix_spawn_file_actions_addclose(&action, cerrPipe[1]);
         }
-        posix_spawn_file_actions_addclose(&action, cerrPipe[0]);
-        posix_spawn_file_actions_adddup2(&action, cerrPipe[1], STDERR_FILENO);
-        // posix_spawn_file_actions_addclose(&action, cerrPipe[1]);
-    }
 
-    if (isSet(m_capture, Capture::In)) {
-        if (pipe(cinPipe)) {
-            return unexpected("pipe returned an error");
+        if (isSet(m_capture, Capture::In)) {
+            if (pipe(cinPipe)) {
+                throw std::runtime_error("pipe returned an error");
+            }
+            posix_spawn_file_actions_addclose(&action, cinPipe[1]);
+            posix_spawn_file_actions_adddup2(&action, cinPipe[0], STDIN_FILENO);
+            // posix_spawn_file_actions_addclose(&action, cinPipe[1]);
         }
-        posix_spawn_file_actions_addclose(&action, cinPipe[1]);
-        posix_spawn_file_actions_adddup2(&action, cinPipe[0], STDIN_FILENO);
-        // posix_spawn_file_actions_addclose(&action, cinPipe[1]);
+
+
+        CharArray args(m_cmd, m_args);
+        CharArray env(m_environ);
+
+        if (posix_spawnp(&m_pid, m_cmd.data(), &action, nullptr, args.data(), env.data()) != 0) {
+            throw std::runtime_error("posix_spawnp failed with error: " + std::string(strerror(errno)));
+        }
+
+        if (posix_spawn_file_actions_destroy(&action)) {
+            throw std::runtime_error("posix_spawn_file_actions_destroy");
+        }
+
+        if (isSet(m_capture, Capture::Out)) {
+            close(coutPipe[1]);
+            m_stdout = coutPipe[0];
+        }
+
+        if (isSet(m_capture, Capture::Err)) {
+            close(cerrPipe[1]);
+            m_stderr = cerrPipe[0];
+        }
+
+        if (isSet(m_capture, Capture::In)) {
+            close(cinPipe[0]);
+            m_stdin = cinPipe[1];
+        }
+
+        return m_pid;
     }
+    catch (const std::exception & e)
+    {
+        //In case of error, we need to clean all the pipe
+        m_stdin = 0;
+        if(cinPipe[0]) close(cinPipe[0]);
+        if(cinPipe[1]) close(cinPipe[1]);
 
+        m_stdout = 0;
+        if(coutPipe[0]) close(coutPipe[0]);
+        if(coutPipe[1]) close(coutPipe[1]);
 
-    CharArray args(m_cmd, m_args);
-    CharArray env(m_environ);
+        m_stderr = 0;
+        if(cerrPipe[0]) close(cerrPipe[0]);
+        if(cerrPipe[1]) close(cerrPipe[1]);
 
-    if (posix_spawnp(&m_pid, m_cmd.data(), &action, nullptr, args.data(), env.data()) != 0) {
-        return unexpected("posix_spawnp failed with error: {}", strerror(errno));
+        return unexpected(e.what());  
     }
-
-    if (posix_spawn_file_actions_destroy(&action)) {
-        return unexpected("posix_spawn_file_actions_destroy");
-    }
-
-    if (isSet(m_capture, Capture::Out)) {
-        close(coutPipe[1]);
-        m_stdout = coutPipe[0];
-    }
-
-    if (isSet(m_capture, Capture::Err)) {
-        close(cerrPipe[1]);
-        m_stderr = cerrPipe[0];
-    }
-
-    if (isSet(m_capture, Capture::In)) {
-        close(cinPipe[0]);
-        m_stdin = cinPipe[1];
-    }
-
-    return m_pid;
 }
 
 inline Expected<int> Process::wait(int timeoutMs, uint32_t waitCycleDurationMs)
