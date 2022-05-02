@@ -103,10 +103,9 @@ TEST_CASE("Process basic tests")
             process.setEnvVar("MYVAR", "test-value");
 
             if (auto pid = process.run()) {
-                CHECK(process.readAllStandardOutput() == "export MYVAR='test-value'\n");
-
                 if (auto status = process.wait()) {
                     CHECK(*status == 0);
+                    CHECK(process.readAllStandardOutput() == "export MYVAR='test-value'\n");
                 } else {
                     FAIL(status.error());
                 }
@@ -127,7 +126,7 @@ TEST_CASE("Process basic tests")
             CHECK(pid.isValid());
             CHECK(pid);
             CHECK(process.write("echo hello"));
-            process.closeWriteChannel();
+            process.wait();
             CHECK("hello" == fty::trimmed(process.readAllStandardOutput()));
         }
         auto afterfd = get_num_fds();
@@ -304,7 +303,15 @@ TEST_CASE("Launch 2 process at the time with launcher in separeted thread")
 {
     using namespace std::chrono_literals;
 
-    auto func = [](int timeout = -1) {
+    auto funcWithoutTimeout = []() {
+        auto process = fty::Process("sh", {"-c", "sleep 3s"});
+        auto pid     = process.run();
+        CHECK(pid);
+        std::this_thread::sleep_for(1s);
+        CHECK(process.wait());
+    };
+
+    auto funcWithTimeout = [](uint64_t timeout) {
         auto process = fty::Process("sh", {"-c", "sleep 3s"});
         auto pid     = process.run();
         CHECK(pid);
@@ -316,8 +323,8 @@ TEST_CASE("Launch 2 process at the time with launcher in separeted thread")
     {
         auto beforefd = get_num_fds();
         {
-            std::thread t1(func);
-            std::thread t2(func);
+            std::thread t1(funcWithoutTimeout);
+            std::thread t2(funcWithoutTimeout);
             t1.join();
             t2.join();
             CHECK(true);
@@ -330,8 +337,8 @@ TEST_CASE("Launch 2 process at the time with launcher in separeted thread")
     {
         auto beforefd = get_num_fds();
         {
-            std::thread t1(func, 50000);
-            std::thread t2(func, 50000);
+            std::thread t1(funcWithTimeout, 50000);
+            std::thread t2(funcWithTimeout, 50000);
             t1.join();
             t2.join();
             CHECK(true);
@@ -349,7 +356,22 @@ TEST_CASE("Process with Huge data")
         auto pid     = process.run();
         CHECK(pid.isValid());
         CHECK(pid);
-        CHECK(process.readAllStandardOutput().size());
+        //CHECK(process.readAllStandardOutput().size());
+    }
+    auto afterfd = get_num_fds();
+    CHECK(beforefd == afterfd);
+}
+
+TEST_CASE("Process with More data than pipe support")
+{
+    auto beforefd = get_num_fds();
+    {
+        auto process = fty::Process("sh", {"-c","counter=68000; while [ $counter -gt 0 ]; do printf \"X\"; counter=$(expr $counter - 1); done; echo \"\""});
+        auto pid     = process.run();
+        CHECK(pid.isValid());
+        CHECK(*pid);
+        process.wait();
+        CHECK (process.readAllStandardOutput().length() == 68001);
     }
     auto afterfd = get_num_fds();
     CHECK(beforefd == afterfd);
