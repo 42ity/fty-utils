@@ -173,7 +173,7 @@ TEST_CASE("Process basic tests")
 
                 auto statusKill = process.kill();
                 CHECK(!statusKill);
-                CHECK(statusKill.error() == "Killed");
+                CHECK( (statusKill.error() == "Killed (core dumped)" || statusKill.error() == "Killed") );
             } else {
                 FAIL(pid.error());
             }
@@ -376,7 +376,7 @@ TEST_CASE("Test hard kill process")
         auto status = process.wait(1000);
 
         CHECK(!status);
-        CHECK(status.error() == "Killed (core dumped)" || status.error() == "Killed");
+        CHECK( (status.error() == "Killed (core dumped)" || status.error() == "Killed") );
     }
     auto afterfd = get_num_fds();
     CHECK(beforefd == afterfd);
@@ -396,7 +396,7 @@ TEST_CASE("Test segfault process")
         if(status) {
             FAIL("Process did not detect segfault");
         } else {
-            CHECK(status.error() == "Segmentation fault (core dumped)" || status.error() == "Segmentation fault");
+            CHECK( (status.error() == "Segmentation fault (core dumped)" || status.error() == "Segmentation fault") );
         }
         
     }
