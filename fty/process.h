@@ -275,6 +275,10 @@ inline Expected<pid_t> Process::run()
 // if dumpData is set, it dump the data in the stream, otherwise the data are discarded
 inline int dumpPipeInStream(int fd, std::ostream & out, bool dumpData)
 {
+    if(fd == 0) {
+        return -1;
+    }
+
     char buffer[65535];
 
     int bytesRead = read(fd, buffer, static_cast<size_t>(65535));
@@ -283,6 +287,8 @@ inline int dumpPipeInStream(int fd, std::ostream & out, bool dumpData)
             out.write(buffer, bytesRead);
         }
     }
+
+    //std::cout << "Data dumped " << bytesRead << std::endl;
     
     return bytesRead;
 }
