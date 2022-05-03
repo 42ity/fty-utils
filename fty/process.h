@@ -47,14 +47,17 @@ ENABLE_FLAGS(Capture)
 class Process
 {
 public:
+    //unlimited wait, is limited to uint64_t max value (looks reasonable as our universe should have vanished by then)
+    inline static const uint64_t UNLIMITED = (std::numeric_limits<uint64_t>::max()-1);
+
     using Arguments = std::vector<std::string>;
     Process(const std::string& cmd, const Arguments& args = {}, Capture capture = Capture::Out | Capture::Err | Capture::In);
     ~Process();
 
     Expected<pid_t> run();
 
-    //unlimited wait, is limited to uint64_t max value (look reasonable as we univers should be vanish by then)
-    Expected<int>   wait(uint64_t timeoutMs = (std::numeric_limits<uint64_t>::max()-1), uint32_t waitCycleDurationMs = 100);
+    
+    Expected<int>   wait(uint64_t timeoutMs = UNLIMITED, uint32_t waitCycleDurationMs = 100);
 
     std::string readAllStandardError();
     std::string readAllStandardOutput();
@@ -63,7 +66,7 @@ public:
     void        setEnvVar(const std::string& name, const std::string& val);
     void        addArgument(const std::string& arg);
 
-    Expected<int> interrupt(uint64_t timeoutMs = (std::numeric_limits<uint64_t>::max()-1) );
+    Expected<int> interrupt(uint64_t timeoutMs = UNLIMITED );
     Expected<int> kill();
 
     bool exists();
