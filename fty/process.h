@@ -29,6 +29,7 @@
 #include <unistd.h>
 #include <vector>
 #include <wait.h>
+#include <string.h>
 
 namespace fty {
 
@@ -62,8 +63,8 @@ public:
     void        setEnvVar(const std::string& name, const std::string& val);
     void        addArgument(const std::string& arg);
 
-    void interrupt();
-    void kill();
+    Expected<int> interrupt(uint64_t timeoutMs = (std::numeric_limits<uint64_t>::max()-1) );
+    Expected<int> kill();
 
     bool exists();
 
@@ -166,8 +167,8 @@ inline Process::~Process()
     }
 
     if (m_pid) {
+        interrupt(10000); //wait 10s for th process to finish, if interrupt succeed, the next hard kill will be ignored
         kill();
-        assert(true && "Process was running, killed...");
     }
 }
 
@@ -287,14 +288,16 @@ inline int dumpPipeInStream(int fd, std::ostream & out, bool dumpData)
             out.write(buffer, bytesRead);
         }
     }
-
-    //std::cout << "Data dumped " << bytesRead << std::endl;
     
     return bytesRead;
 }
 
 inline Expected<int> Process::wait(uint64_t timeoutMs, uint32_t waitCycleDurationMs)
 {
+    if(!m_pid) {
+        return unexpected("Process is not running");
+    }
+
     closeWriteChannel();
     int status = 0;
 
@@ -310,7 +313,7 @@ inline Expected<int> Process::wait(uint64_t timeoutMs, uint32_t waitCycleDuratio
     uint64_t numberOfCycles = 0;
 
     // Number of cycle is timeout (ms) / by the cycle duration (ms) and rounded to upper value
-    uint64_t maxNumberOfCycles =timeoutMs / waitCycleDurationMs;
+    uint64_t maxNumberOfCycles = timeoutMs / waitCycleDurationMs;
     if (timeoutMs % waitCycleDurationMs > 0) {
         maxNumberOfCycles++;
     }
@@ -318,12 +321,12 @@ inline Expected<int> Process::wait(uint64_t timeoutMs, uint32_t waitCycleDuratio
     pid_t pid;
     while (true) // endless loop
     {
+
         // Check if the process is stopped
-        if ((pid = waitpid(m_pid, &status, WNOHANG)) == -1) {
+        if ((pid = waitpid(m_pid, &status, WNOHANG | WUNTRACED | WCONTINUED)) == -1) {
             return unexpected("waitpid error");
         }
 
-        
         //Dump the Buffers
         {
             std::lock_guard<std::mutex> guard(m_streamMutex);
@@ -343,17 +346,17 @@ inline Expected<int> Process::wait(uint64_t timeoutMs, uint32_t waitCycleDuratio
             std::this_thread::sleep_for(std::chrono::milliseconds(waitCycleDurationMs));
             numberOfCycles++;
         } else {
-            //Dump all the buffer => readFromFd should return 0 when it's finished
+            //Dump all the buffer => readFromFd should return 0 when it's finished or -1
             int readFromBuffer = 0;
             do {
                 std::lock_guard<std::mutex> guard(m_streamMutex);
                 readFromBuffer = dumpPipeInStream(m_stdout, m_streamOut, isSet(m_capture, Capture::Out));
-            } while (readFromBuffer != 0);
+            } while (readFromBuffer > 0);
 
             do {
                 std::lock_guard<std::mutex> guard(m_streamMutex);
                 readFromBuffer = dumpPipeInStream(m_stderr, m_streamErr, isSet(m_capture, Capture::Err));
-            } while (readFromBuffer != 0);
+            } while (readFromBuffer > 0);
 
             //set pid to 0 as the process finished
             m_pid = 0;
@@ -362,83 +365,19 @@ inline Expected<int> Process::wait(uint64_t timeoutMs, uint32_t waitCycleDuratio
             if (WIFEXITED(status)) {
                 return WEXITSTATUS(status);
             } else if (WIFSIGNALED(status)) {
-                return WTERMSIG(status);
-            } else if (WIFSTOPPED(status)) {
-                return WSTOPSIG(status);
+
+                std::string errMsg = std::string(strsignal(WTERMSIG(status)));
+                if (WCOREDUMP(status)) {
+                    errMsg += " (core dumped)";
+                }
+
+                return unexpected(errMsg);
             }
             
             return unexpected("Impossible to identify reason for stop");
         }
     }
-
-    // We wait until the end of the program -> wait pid can return for several reason, and we want to get only when our pid returns
-    /*do {
-        if (auto res = waitpid(m_pid, &status, WUNTRACED | WCONTINUED); res == -1) {
-            return unexpected("waitpid error");
-        }
-
-        // Idenfity why we returned
-        if (WIFEXITED(status)) {
-            m_pid = 0;
-            return WEXITSTATUS(status);
-        } else if (WIFSIGNALED(status)) {
-            m_pid = 0;
-            return WTERMSIG(status);
-        } else if (WIFSTOPPED(status)) {
-            m_pid = 0;
-            return WSTOPSIG(status);
-        }
-    } while (!WIFEXITED(status) && !WIFSIGNALED(status));
-
-    return unexpected("something wrong");*/
 }
-
-/*inline std::string readFromFd(int fd, int milliseconds, int maxretry = 2)
-{
-    std::array<char, 1024> buffer;
-    std::string            output;
-
-    timeval tv;
-    if (milliseconds > 0) {
-        tv.tv_sec  = milliseconds / 1000;
-        tv.tv_usec = (milliseconds % 1000) * 1000;
-    } else {
-        tv.tv_sec  = 0;
-        tv.tv_usec = 100 * 1000;
-    }
-
-    fd_set readSet;
-    FD_ZERO(&readSet);
-    FD_SET(fd, &readSet);
-    int exit = 0;
-
-    int o_flags = fcntl(fd, F_GETFL);
-    int n_flags = o_flags | O_NONBLOCK;
-    fcntl(fd, F_SETFL, n_flags);
-
-    while (true) {
-        if (int retval = select(fd + 1, &readSet, nullptr, nullptr, &tv); retval > 0) {
-            if (FD_ISSET(fd, &readSet)) {
-                if (auto bytesRead = read(fd, &buffer[0], buffer.size()); bytesRead > 0) {
-                    output += std::string(buffer.data(), size_t(bytesRead));
-                } else {
-                    if ((errno == EAGAIN || errno == EWOULDBLOCK) && exit < maxretry) {
-                        ++exit;
-                        continue;
-                    }
-                    break;
-                }
-            }
-        } else if (retval == 0 && exit < maxretry) {
-            ++exit;
-            continue;
-        } else {
-            break;
-        }
-    }
-
-    return output;
-}*/
 
 inline std::string Process::readAllStandardOutput()
 {
@@ -511,28 +450,24 @@ inline void Process::addArgument(const std::string& arg)
 }
 
 
-inline void Process::interrupt()
+inline Expected<int> Process::interrupt(uint64_t timeoutMs)
 {
-    if (m_pid) {
-        ::kill(m_pid, SIGINT);
-        int status;
-        do {
-            waitpid(m_pid, &status, WUNTRACED | WCONTINUED);
-        } while (!WIFEXITED(status) && !WIFSIGNALED(status) && !WIFSTOPPED(status) && !WCOREDUMP(status));
-        m_pid = 0;
+    if (!m_pid) {
+        return unexpected("Process is not running");
     }
+
+    ::kill(m_pid, SIGINT);
+    return wait(timeoutMs);
 }
 
-inline void Process::kill()
+inline Expected<int> Process::kill()
 {
-    if (m_pid) {
-        ::kill(m_pid, SIGKILL);
-        int status;
-        do {
-            waitpid(m_pid, &status, WUNTRACED | WCONTINUED);
-        } while (!WIFEXITED(status) && !WIFSIGNALED(status) && !WIFSTOPPED(status) && !WCOREDUMP(status));
-        m_pid = 0;
+    if (!m_pid) {
+        return unexpected("Process is not running");
     }
+
+    ::kill(m_pid, SIGKILL);
+    return wait();
 }
 
 inline bool Process::exists()
@@ -549,11 +484,9 @@ inline Expected<int> Process::run(const std::string& cmd, const Arguments& args,
     if (auto ret = proc.run(); !ret) {
         return unexpected(ret.error());
     }
-    out      = proc.readAllStandardOutput();
-    err      = proc.readAllStandardError();
     auto ret = proc.wait();
-    out += proc.readAllStandardOutput();
-    err += proc.readAllStandardError();
+    out = proc.readAllStandardOutput();
+    err = proc.readAllStandardError();
     if (ret) {
         return *ret;
     } else {
@@ -567,9 +500,8 @@ inline Expected<int> Process::run(const std::string& cmd, const Arguments& args,
     if (auto ret = proc.run(); !ret) {
         return unexpected(ret.error());
     }
-    out      = proc.readAllStandardOutput();
     auto ret = proc.wait();
-    out += proc.readAllStandardOutput();
+    out = proc.readAllStandardOutput();
     if (ret) {
         return *ret;
     } else {

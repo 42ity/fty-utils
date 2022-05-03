@@ -145,8 +145,12 @@ TEST_CASE("Process basic tests")
             if (auto pid = process.run()) {
                 auto status = process.wait(10);
                 CHECK(!status);
-                CHECK("timeout" == status.error());
-                process.interrupt();
+                CHECK(status.error() == "timeout");
+
+                auto statusInterrupt = process.interrupt();
+                CHECK(!statusInterrupt);
+                CHECK(statusInterrupt.error() == "Interrupt");
+
                 CHECK(!process.exists());
             } else {
                 FAIL(pid.error());
@@ -165,9 +169,11 @@ TEST_CASE("Process basic tests")
             if (auto pid = process.run()) {
                 auto status = process.wait(10);
                 CHECK(!status);
-                CHECK("timeout" == status.error());
-                process.kill();
-                CHECK(!process.exists());
+                CHECK(status.error() == "timeout");
+
+                auto statusKill = process.kill();
+                CHECK(!statusKill);
+                CHECK(statusKill.error() == "Killed");
             } else {
                 FAIL(pid.error());
             }
@@ -367,7 +373,31 @@ TEST_CASE("Test hard kill process")
         CHECK(pid);
 
         kill(*pid, SIGKILL);
-        process.wait(1000);
+        auto status = process.wait(1000);
+
+        CHECK(!status);
+        CHECK(status.error() == "Killed");
+    }
+    auto afterfd = get_num_fds();
+    CHECK(beforefd == afterfd);
+}
+
+TEST_CASE("Test segfault process")
+{
+    auto beforefd = get_num_fds();
+    {
+        auto process = fty::Process("bash");
+        auto pid     = process.run();
+        CHECK(pid.isValid());
+        CHECK(pid);
+
+        kill(*pid, SIGSEGV);
+        auto status = process.wait(1000);
+        if(status) {
+            FAIL("Process did not detect segfault");
+        } else {
+            CHECK(status.error() == "Segmentation fault (core dumped)");
+        }
         
     }
     auto afterfd = get_num_fds();
@@ -384,7 +414,9 @@ TEST_CASE("Process with lot of data in out")
             auto pid     = process.run();
             CHECK(pid.isValid());
             CHECK(*pid);
-            process.wait();
+            auto status = process.wait();
+            CHECK(status);
+            CHECK(*status == 0);
             CHECK (process.readAllStandardOutput().length() == 68000);
             CHECK (process.readAllStandardError().length() == 0);
         }
@@ -401,7 +433,9 @@ TEST_CASE("Process with lot of data in out")
             process.write("for I in {1..68000}; do printf \"X\";  done;");
             CHECK(pid.isValid());
             CHECK(*pid);
-            process.wait();
+            auto status = process.wait();
+            CHECK(status);
+            CHECK(*status == 0);
             CHECK (process.readAllStandardError().length() == 0);
             CHECK (process.readAllStandardOutput().length() == 68000);
         }
@@ -417,7 +451,9 @@ TEST_CASE("Process with lot of data in out")
             auto pid     = process.run();
             CHECK(pid.isValid());
             CHECK(*pid);
-            process.wait();
+            auto status = process.wait();
+            CHECK(status);
+            CHECK(*status == 0);
             CHECK (process.readAllStandardOutput().length() == 0);
             CHECK (process.readAllStandardError().length() == 0);
         }
@@ -433,7 +469,9 @@ TEST_CASE("Process with lot of data in out")
             auto pid     = process.run();
             CHECK(pid.isValid());
             CHECK(*pid);
-            process.wait();
+            auto status = process.wait();
+            CHECK(status);
+            CHECK(*status == 0);
             CHECK (process.readAllStandardOutput().length() == 0);
             CHECK (process.readAllStandardError().length() == 68000);
         }
