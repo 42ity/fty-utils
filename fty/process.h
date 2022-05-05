@@ -59,8 +59,8 @@ public:
     
     Expected<int>   wait(uint64_t timeoutMs = UNLIMITED, uint32_t waitCycleDurationMs = 100);
 
-    std::string readAllStandardError();
-    std::string readAllStandardOutput();
+    std::string readAllStandardError(uint64_t timeoutMs = 100);
+    std::string readAllStandardOutput(uint64_t timeoutMs = 100);
     bool        write(const std::string& cmd);
     void        closeWriteChannel();
     void        setEnvVar(const std::string& name, const std::string& val);
@@ -382,15 +382,14 @@ inline Expected<int> Process::wait(uint64_t timeoutMs, uint32_t waitCycleDuratio
     }
 }
 
-inline std::string Process::readAllStandardOutput()
+inline std::string Process::readAllStandardOutput(uint64_t timeoutMs)
 {
     std::string str;
+    //We do a dump in case there is a bit of data after 100ms (to be backward compatible...)
+    std::this_thread::sleep_for(std::chrono::milliseconds(timeoutMs));
 
     {
-        std::lock_guard<std::mutex> guard(m_streamMutex);
-
-        //We do a dump in case there is a bit of data after 100ms (to be backward compatible...)
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+	std::lock_guard<std::mutex> guard(m_streamMutex);
         dumpPipeInStream(m_stdout, m_streamOut, isSet(m_capture, Capture::Out));
         str = m_streamOut.str();
 
@@ -402,14 +401,15 @@ inline std::string Process::readAllStandardOutput()
     return str;
 }
 
-inline std::string Process::readAllStandardError()
+inline std::string Process::readAllStandardError(uint64_t timeoutMs)
 {
     std::string str;
+    
+    //We do a dump in case there is a bit of data after 100ms (to be backward compatible...)
+    std::this_thread::sleep_for(std::chrono::milliseconds(timeoutMs));
 
     {
-        std::lock_guard<std::mutex> guard(m_streamMutex);
-        //We do a dump in case there is a bit of data after 100ms (to be backward compatible...)
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+	std::lock_guard<std::mutex> guard(m_streamMutex);
         dumpPipeInStream(m_stderr, m_streamErr, isSet(m_capture, Capture::Err));
         str = m_streamErr.str();
 
