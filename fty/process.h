@@ -19,12 +19,17 @@
 #include <fty/expected.h>
 #include <fty/flags.h>
 #include <iostream>
+#include <atomic>
+#include <sstream>
+#include <mutex>
+#include <limits>
 #include <poll.h>
 #include <spawn.h>
 #include <thread>
 #include <unistd.h>
 #include <vector>
 #include <wait.h>
+#include <string.h>
 
 namespace fty {
 
@@ -42,22 +47,27 @@ ENABLE_FLAGS(Capture)
 class Process
 {
 public:
+    //unlimited wait, is limited to uint64_t max value (looks reasonable as our universe should have vanished by then)
+    inline static const uint64_t UNLIMITED = (std::numeric_limits<uint64_t>::max()-1);
+
     using Arguments = std::vector<std::string>;
     Process(const std::string& cmd, const Arguments& args = {}, Capture capture = Capture::Out | Capture::Err | Capture::In);
     ~Process();
 
     Expected<pid_t> run();
-    Expected<int>   wait(int timeoutMs = -1, uint32_t waitCycleDurationMs = 100);
 
-    std::string readAllStandardError(int milliseconds = -1);
-    std::string readAllStandardOutput(int milliseconds = -1);
+    
+    Expected<int>   wait(uint64_t timeoutMs = UNLIMITED, uint32_t waitCycleDurationMs = 100);
+
+    std::string readAllStandardError();
+    std::string readAllStandardOutput();
     bool        write(const std::string& cmd);
     void        closeWriteChannel();
     void        setEnvVar(const std::string& name, const std::string& val);
     void        addArgument(const std::string& arg);
 
-    void interrupt();
-    void kill();
+    Expected<int> interrupt(uint64_t timeoutMs = UNLIMITED );
+    Expected<int> kill();
 
     bool exists();
 
@@ -71,10 +81,14 @@ private:
     std::vector<std::string> m_args;
     std::vector<std::string> m_environ;
     Capture                  m_capture;
-    pid_t                    m_pid    = 0;
+    pid_t                    m_pid = 0;
     int                      m_stdout = 0;
     int                      m_stderr = 0;
     int                      m_stdin  = 0;
+
+    std::mutex              m_streamMutex;
+    std::stringstream       m_streamOut;
+    std::stringstream       m_streamErr;
 };
 
 // =========================================================================================================================================
@@ -156,8 +170,8 @@ inline Process::~Process()
     }
 
     if (m_pid) {
+        interrupt(10000); //wait 10s for th process to finish, if interrupt succeed, the next hard kill will be ignored
         kill();
-        assert(true && "Process was running, killed...");
     }
 }
 
@@ -171,33 +185,26 @@ inline Expected<pid_t> Process::run()
         posix_spawn_file_actions_t action;
         posix_spawn_file_actions_init(&action);
 
-        if (isSet(m_capture, Capture::Out)) {
-            if (pipe(coutPipe)) {
-                throw std::runtime_error("pipe returned an error");
-            }
-            posix_spawn_file_actions_addclose(&action, coutPipe[0]);
-            posix_spawn_file_actions_adddup2(&action, coutPipe[1], STDOUT_FILENO);
-            // posix_spawn_file_actions_addclose(&action, coutPipe[1]);
+        //Create stdout
+        if (pipe(coutPipe)) {
+            throw std::runtime_error("pipe returned an error");
         }
+        posix_spawn_file_actions_addclose(&action, coutPipe[0]);
+        posix_spawn_file_actions_adddup2(&action, coutPipe[1], STDOUT_FILENO);
 
-        if (isSet(m_capture, Capture::Err)) {
-            if (pipe(cerrPipe)) {
-                throw std::runtime_error("pipe returned an error");
-            }
-            posix_spawn_file_actions_addclose(&action, cerrPipe[0]);
-            posix_spawn_file_actions_adddup2(&action, cerrPipe[1], STDERR_FILENO);
-            // posix_spawn_file_actions_addclose(&action, cerrPipe[1]);
+
+        //Create stderr
+        if (pipe(cerrPipe)) {
+            throw std::runtime_error("pipe returned an error");
         }
+        posix_spawn_file_actions_addclose(&action, cerrPipe[0]);
+        posix_spawn_file_actions_adddup2(&action, cerrPipe[1], STDERR_FILENO);
 
-        if (isSet(m_capture, Capture::In)) {
-            if (pipe(cinPipe)) {
-                throw std::runtime_error("pipe returned an error");
-            }
-            posix_spawn_file_actions_addclose(&action, cinPipe[1]);
-            posix_spawn_file_actions_adddup2(&action, cinPipe[0], STDIN_FILENO);
-            // posix_spawn_file_actions_addclose(&action, cinPipe[1]);
+        if (pipe(cinPipe)) {
+            throw std::runtime_error("pipe returned an error");
         }
-
+        posix_spawn_file_actions_addclose(&action, cinPipe[1]);
+        posix_spawn_file_actions_adddup2(&action, cinPipe[0], STDIN_FILENO);
 
         CharArray args(m_cmd, m_args);
         CharArray env(m_environ);
@@ -210,19 +217,41 @@ inline Expected<pid_t> Process::run()
             throw std::runtime_error("posix_spawn_file_actions_destroy");
         }
 
-        if (isSet(m_capture, Capture::Out)) {
+
+        //Setup the stdout file descriptor
+        {
+            //We close the useless entry
             close(coutPipe[1]);
             m_stdout = coutPipe[0];
+
+            //We set the output as none blocking for the read actions (used in the wait process)
+            int o_flags = fcntl(m_stdout, F_GETFL);
+            int n_flags = o_flags | O_NONBLOCK;
+            fcntl(m_stdout, F_SETFL, n_flags);
         }
 
-        if (isSet(m_capture, Capture::Err)) {
+        //Setup the stderr file descriptor
+        {
+            //We close the useless entry
             close(cerrPipe[1]);
             m_stderr = cerrPipe[0];
+
+            //We set the output as none blocking for the read actions (used in the wait process)
+            int o_flags = fcntl(m_stderr, F_GETFL);
+            int n_flags = o_flags | O_NONBLOCK;
+            fcntl(m_stderr, F_SETFL, n_flags);
         }
 
-        if (isSet(m_capture, Capture::In)) {
+        //Setup the stdin file descriptor
+        {
+            //We close the useless entry
             close(cinPipe[0]);
             m_stdin = cinPipe[1];
+
+            //we do not need the stdin, so we close it
+            if (!isSet(m_capture, Capture::In)) {
+                closeWriteChannel();
+            }   
         }
 
         return m_pid;
@@ -246,142 +275,150 @@ inline Expected<pid_t> Process::run()
     }
 }
 
-inline Expected<int> Process::wait(int timeoutMs, uint32_t waitCycleDurationMs)
+//dumpPipeInStream is reading from file descriptor and 
+// if dumpData is set, it dump the data in the stream, otherwise the data are discarded
+inline int dumpPipeInStream(int fd, std::ostream & out, bool dumpData)
 {
+    if(fd == 0) {
+        return -1;
+    }
+
+    char buffer[65535];
+
+    int bytesRead = read(fd, buffer, static_cast<size_t>(65535));
+    if(bytesRead > 0) {
+        if(dumpData) {
+            out.write(buffer, bytesRead);
+        }
+    }
+    
+    return bytesRead;
+}
+
+inline Expected<int> Process::wait(uint64_t timeoutMs, uint32_t waitCycleDurationMs)
+{
+    if(!m_pid) {
+        return unexpected("Process is not running");
+    }
+
     closeWriteChannel();
     int status = 0;
 
     // Wait with timeout is hard to do has the OS does not provid direct solution for it.
     // We will do active waiting with step...
-    // This solution is thread safe
-    if (timeoutMs >= 0) {
 
-        assert(waitCycleDurationMs);
-        if (waitCycleDurationMs == 0) {
-            return unexpected("Cycle duration has to be bigger than 0");
-        }
-
-        // Better to use number of cycle to wait, than using std::chrono, which require a syscall to have exact time.
-        uint32_t numberOfCycles = 0;
-
-        // Number of cycle is timeout (ms) / by the cycle duration (ms) and rounded to upper value
-        uint32_t maxNumberOfCycles = static_cast<uint32_t>(timeoutMs) / waitCycleDurationMs;
-        if (static_cast<uint32_t>(timeoutMs) % waitCycleDurationMs > 0) {
-            maxNumberOfCycles++;
-        }
-
-        pid_t pid;
-        while (true) // endless loop
-        {
-            // Check if the process is stopped
-            if ((pid = waitpid(m_pid, &status, WNOHANG)) == -1) {
-                return unexpected("waitpid error");
-            }
-
-            // Child is still running
-            if (pid == 0) {
-                // Child is still running
-
-                // Check if we waited enough
-                if (numberOfCycles > maxNumberOfCycles) {
-                    return unexpected("timeout");
-                }
-
-                std::this_thread::sleep_for(std::chrono::milliseconds(waitCycleDurationMs));
-                numberOfCycles++;
-            } else {
-                m_pid = 0;
-                // Idenfity why we returned
-                if (WIFEXITED(status)) {
-                    return WEXITSTATUS(status);
-                } else if (WIFSIGNALED(status)) {
-                    return WTERMSIG(status);
-                } else if (WIFSTOPPED(status)) {
-                    return WSTOPSIG(status);
-                }
-                
-                return unexpected("Impossible to identify reason for stop");
-            }
-        }
+    assert(waitCycleDurationMs);
+    if (waitCycleDurationMs == 0) {
+        return unexpected("Cycle duration has to be bigger than 0");
     }
 
-    // We wait until the end of the program -> wait pid can return for several reason, and we want to get only when our pid returns
-    do {
-        if (auto res = waitpid(m_pid, &status, WUNTRACED | WCONTINUED); res == -1) {
+    // Better to use number of cycle to wait, than using std::chrono, which require a syscall to have exact time.
+    uint64_t numberOfCycles = 0;
+
+    // Number of cycle is timeout (ms) / by the cycle duration (ms) and rounded to upper value
+    uint64_t maxNumberOfCycles = timeoutMs / waitCycleDurationMs;
+    if (timeoutMs % waitCycleDurationMs > 0) {
+        maxNumberOfCycles++;
+    }
+
+    pid_t pid;
+    while (true) // endless loop
+    {
+
+        // Check if the process is stopped
+        if ((pid = waitpid(m_pid, &status, WNOHANG | WUNTRACED | WCONTINUED)) == -1) {
             return unexpected("waitpid error");
         }
 
-        // Idenfity why we returned
-        if (WIFEXITED(status)) {
-            m_pid = 0;
-            return WEXITSTATUS(status);
-        } else if (WIFSIGNALED(status)) {
-            m_pid = 0;
-            return WTERMSIG(status);
-        } else if (WIFSTOPPED(status)) {
-            m_pid = 0;
-            return WSTOPSIG(status);
+        //Dump the Buffers
+        {
+            std::lock_guard<std::mutex> guard(m_streamMutex);
+            dumpPipeInStream(m_stdout, m_streamOut, isSet(m_capture, Capture::Out));
+            dumpPipeInStream(m_stderr, m_streamErr, isSet(m_capture, Capture::Err));
         }
-    } while (!WIFEXITED(status) && !WIFSIGNALED(status));
 
-    return unexpected("something wrong");
-}
+        // Child is still running
+        if (pid == 0) {
+            // Child is still running
 
-inline std::string readFromFd(int fd, int milliseconds, int maxretry = 2)
-{
-    std::array<char, 1024> buffer;
-    std::string            output;
-
-    timeval tv;
-    if (milliseconds > 0) {
-        tv.tv_sec  = milliseconds / 1000;
-        tv.tv_usec = (milliseconds % 1000) * 1000;
-    } else {
-        tv.tv_sec  = 0;
-        tv.tv_usec = 100 * 1000;
-    }
-
-    fd_set readSet;
-    FD_ZERO(&readSet);
-    FD_SET(fd, &readSet);
-    int exit = 0;
-
-    int o_flags = fcntl(fd, F_GETFL);
-    int n_flags = o_flags | O_NONBLOCK;
-    fcntl(fd, F_SETFL, n_flags);
-
-    while (true) {
-        if (int retval = select(fd + 1, &readSet, nullptr, nullptr, &tv); retval > 0) {
-            if (FD_ISSET(fd, &readSet)) {
-                if (auto bytesRead = read(fd, &buffer[0], buffer.size()); bytesRead > 0) {
-                    output += std::string(buffer.data(), size_t(bytesRead));
-                } else {
-                    if ((errno == EAGAIN || errno == EWOULDBLOCK) && exit < maxretry) {
-                        ++exit;
-                        continue;
-                    }
-                    break;
-                }
+            // Check if we waited enough
+            if (numberOfCycles > maxNumberOfCycles) {
+                return unexpected("timeout");
             }
-        } else if (retval == 0 && exit < maxretry) {
-            ++exit;
-            continue;
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(waitCycleDurationMs));
+            numberOfCycles++;
         } else {
-            break;
+            //Dump all the buffer => readFromFd should return 0 when it's finished or -1
+            int readFromBuffer = 0;
+            do {
+                std::lock_guard<std::mutex> guard(m_streamMutex);
+                readFromBuffer = dumpPipeInStream(m_stdout, m_streamOut, isSet(m_capture, Capture::Out));
+            } while (readFromBuffer > 0);
+
+            do {
+                std::lock_guard<std::mutex> guard(m_streamMutex);
+                readFromBuffer = dumpPipeInStream(m_stderr, m_streamErr, isSet(m_capture, Capture::Err));
+            } while (readFromBuffer > 0);
+
+            //set pid to 0 as the process finished
+            m_pid = 0;
+
+            // Idenfity why we returned
+            if (WIFEXITED(status)) {
+                return WEXITSTATUS(status);
+            } else if (WIFSIGNALED(status)) {
+
+                std::string errMsg = std::string(strsignal(WTERMSIG(status)));
+                if (WCOREDUMP(status)) {
+                    errMsg += " (core dumped)";
+                }
+
+                return unexpected(errMsg);
+            }
+            
+            return unexpected("Impossible to identify reason for stop");
         }
     }
-
-    return output;
 }
 
-inline std::string Process::readAllStandardOutput(int milliseconds)
+inline std::string Process::readAllStandardOutput()
 {
-    return readFromFd(m_stdout, milliseconds);
+    std::string str;
+
+    {
+        std::lock_guard<std::mutex> guard(m_streamMutex);
+
+        //We do a dump in case there is a bit of data after 100ms (to be backward compatible...)
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        dumpPipeInStream(m_stdout, m_streamOut, isSet(m_capture, Capture::Out));
+        str = m_streamOut.str();
+
+        //clean the buffer
+        m_streamOut.clear();
+        m_streamOut.str(std::string());
+    }
+    
+    return str;
 }
 
-inline std::string Process::readAllStandardError(int milliseconds)
+inline std::string Process::readAllStandardError()
 {
-    return readFromFd(m_stderr, milliseconds);
+    std::string str;
+
+    {
+        std::lock_guard<std::mutex> guard(m_streamMutex);
+        //We do a dump in case there is a bit of data after 100ms (to be backward compatible...)
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        dumpPipeInStream(m_stderr, m_streamErr, isSet(m_capture, Capture::Err));
+        str = m_streamErr.str();
+
+        //clean the buffer
+        m_streamErr.clear();
+        m_streamErr.str(std::string());
+    }
+    
+    return str;
 }
 
 inline bool Process::write(const std::string& cmd)
@@ -416,28 +453,24 @@ inline void Process::addArgument(const std::string& arg)
 }
 
 
-inline void Process::interrupt()
+inline Expected<int> Process::interrupt(uint64_t timeoutMs)
 {
-    if (m_pid) {
-        ::kill(m_pid, SIGINT);
-        int status;
-        do {
-            waitpid(m_pid, &status, WUNTRACED | WCONTINUED);
-        } while (!WIFEXITED(status) && !WIFSIGNALED(status) && !WIFSTOPPED(status) && !WCOREDUMP(status));
-        m_pid = 0;
+    if (!m_pid) {
+        return unexpected("Process is not running");
     }
+
+    ::kill(m_pid, SIGINT);
+    return wait(timeoutMs);
 }
 
-inline void Process::kill()
+inline Expected<int> Process::kill()
 {
-    if (m_pid) {
-        ::kill(m_pid, SIGKILL);
-        int status;
-        do {
-            waitpid(m_pid, &status, WUNTRACED | WCONTINUED);
-        } while (!WIFEXITED(status) && !WIFSIGNALED(status) && !WIFSTOPPED(status) && !WCOREDUMP(status));
-        m_pid = 0;
+    if (!m_pid) {
+        return unexpected("Process is not running");
     }
+
+    ::kill(m_pid, SIGKILL);
+    return wait();
 }
 
 inline bool Process::exists()
@@ -454,11 +487,9 @@ inline Expected<int> Process::run(const std::string& cmd, const Arguments& args,
     if (auto ret = proc.run(); !ret) {
         return unexpected(ret.error());
     }
-    out      = proc.readAllStandardOutput();
-    err      = proc.readAllStandardError();
     auto ret = proc.wait();
-    out += proc.readAllStandardOutput();
-    err += proc.readAllStandardError();
+    out = proc.readAllStandardOutput();
+    err = proc.readAllStandardError();
     if (ret) {
         return *ret;
     } else {
@@ -472,9 +503,8 @@ inline Expected<int> Process::run(const std::string& cmd, const Arguments& args,
     if (auto ret = proc.run(); !ret) {
         return unexpected(ret.error());
     }
-    out      = proc.readAllStandardOutput();
     auto ret = proc.wait();
-    out += proc.readAllStandardOutput();
+    out = proc.readAllStandardOutput();
     if (ret) {
         return *ret;
     } else {

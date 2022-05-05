@@ -102,9 +102,11 @@ TEST_CASE("Process basic tests")
             auto process = fty::Process("sh", {"-c", "export | grep MYVAR"});
             process.setEnvVar("MYVAR", "test-value");
 
+            //check we do not have dataif process is not running
+            CHECK(process.readAllStandardOutput() == "");
+
             if (auto pid = process.run()) {
                 CHECK(process.readAllStandardOutput() == "export MYVAR='test-value'\n");
-
                 if (auto status = process.wait()) {
                     CHECK(*status == 0);
                 } else {
@@ -143,8 +145,12 @@ TEST_CASE("Process basic tests")
             if (auto pid = process.run()) {
                 auto status = process.wait(10);
                 CHECK(!status);
-                CHECK("timeout" == status.error());
-                process.interrupt();
+                CHECK(status.error() == "timeout");
+
+                auto statusInterrupt = process.interrupt();
+                CHECK(!statusInterrupt);
+                CHECK(statusInterrupt.error() == "Interrupt");
+
                 CHECK(!process.exists());
             } else {
                 FAIL(pid.error());
@@ -163,9 +169,11 @@ TEST_CASE("Process basic tests")
             if (auto pid = process.run()) {
                 auto status = process.wait(10);
                 CHECK(!status);
-                CHECK("timeout" == status.error());
-                process.kill();
-                CHECK(!process.exists());
+                CHECK(status.error() == "timeout");
+
+                auto statusKill = process.kill();
+                CHECK(!statusKill);
+                CHECK( (statusKill.error() == "Killed (core dumped)" || statusKill.error() == "Killed") );
             } else {
                 FAIL(pid.error());
             }
@@ -273,24 +281,24 @@ TEST_CASE("Launch 2 process at the time")
     {
         auto beforefd = get_num_fds();
         {
-            auto process1 = fty::Process("sh", {"-c", "sleep 1s"});
-            auto process2 = fty::Process("sh", {"-c", "sleep 1s"});
+            auto process1 = fty::Process("sh", {"-c", "sleep 2s"});
+            auto process2 = fty::Process("sh", {"-c", "sleep 2s"});
             auto pid1     = process1.run();
             auto pid2     = process2.run();
             CHECK(pid1);
             CHECK(pid2);
             CHECK(*pid1 != *pid2);
-            auto status1 = process1.wait(30000);
-            auto status2 = process2.wait(30000);
+            auto status1 = process1.wait(300);
+            auto status2 = process2.wait(300);
 
-            if (status1) {
-                CHECK(*status1 == 0);
+            if (!status1) {
+                CHECK(status1.error() == "timeout");
             } else {
                 FAIL(status1.error());
             }
 
-            if (status2) {
-                CHECK(*status2 == 0);
+            if (!status2) {
+                CHECK(status2.error() == "timeout");
             } else {
                 FAIL(status2.error());
             }
@@ -304,20 +312,33 @@ TEST_CASE("Launch 2 process at the time with launcher in separeted thread")
 {
     using namespace std::chrono_literals;
 
-    auto func = [](int timeout = -1) {
+    auto func = [](uint64_t timeout, bool shouldTimeOut = false) {
         auto process = fty::Process("sh", {"-c", "sleep 3s"});
         auto pid     = process.run();
         CHECK(pid);
         std::this_thread::sleep_for(1s);
-        CHECK(process.wait(timeout));
+
+        auto status = process.wait(timeout);
+
+        if(!shouldTimeOut) {
+            CHECK(status);
+        } else {
+            if (!status) {
+                CHECK(status.error() == "timeout");
+            } else {
+                FAIL("Process finished and it was not expected");
+            }
+        }
+        
     };
 
     SECTION("Process finished before timeout")
     {
         auto beforefd = get_num_fds();
         {
-            std::thread t1(func);
-            std::thread t2(func);
+            //func takes 3 seconds to execute a process
+            std::thread t1(func, 6000); //wait 6s
+            std::thread t2(func, 6000); //wait 6s
             t1.join();
             t2.join();
             CHECK(true);
@@ -328,10 +349,11 @@ TEST_CASE("Launch 2 process at the time with launcher in separeted thread")
 
     SECTION("Process finished after timeout")
     {
+        //func takes 3 seconds to execute a process
         auto beforefd = get_num_fds();
         {
-            std::thread t1(func, 50000);
-            std::thread t2(func, 50000);
+            std::thread t1(func, 500, true); //wait 500ms
+            std::thread t2(func, 500, true); //wait 500ms
             t1.join();
             t2.join();
             CHECK(true);
@@ -341,16 +363,119 @@ TEST_CASE("Launch 2 process at the time with launcher in separeted thread")
     }
 }
 
-TEST_CASE("Process with Huge data")
+TEST_CASE("Test hard kill process")
 {
     auto beforefd = get_num_fds();
     {
-        auto process = fty::Process("dpkg", {"-l"});
+        auto process = fty::Process("bash", {"-c", "sleep 10"});
         auto pid     = process.run();
         CHECK(pid.isValid());
         CHECK(pid);
-        CHECK(process.readAllStandardOutput().size());
+
+        kill(*pid, SIGKILL);
+        auto status = process.wait(1000);
+
+        CHECK(!status);
+        CHECK( (status.error() == "Killed (core dumped)" || status.error() == "Killed") );
     }
     auto afterfd = get_num_fds();
     CHECK(beforefd == afterfd);
+}
+
+TEST_CASE("Test segfault process")
+{
+    auto beforefd = get_num_fds();
+    {
+        auto process = fty::Process("bash");
+        auto pid     = process.run();
+        CHECK(pid.isValid());
+        CHECK(pid);
+
+        kill(*pid, SIGSEGV);
+        auto status = process.wait(1000);
+        if(status) {
+            FAIL("Process did not detect segfault");
+        } else {
+            CHECK( (status.error() == "Segmentation fault (core dumped)" || status.error() == "Segmentation fault") );
+        }
+        
+    }
+    auto afterfd = get_num_fds();
+    CHECK(beforefd == afterfd);
+}
+
+TEST_CASE("Process with lot of data in out")
+{
+    SECTION("Use args to launch process")
+    {
+        auto beforefd = get_num_fds();
+        {
+            auto process = fty::Process("bash", {"-c", "for I in {1..68000}; do printf \"X\";  done;"});
+            auto pid     = process.run();
+            CHECK(pid.isValid());
+            CHECK(*pid);
+            auto status = process.wait();
+            CHECK(status);
+            CHECK(*status == 0);
+            CHECK (process.readAllStandardOutput().length() == 68000);
+            CHECK (process.readAllStandardError().length() == 0);
+        }
+        auto afterfd = get_num_fds();
+        CHECK(beforefd == afterfd);
+    }
+
+    SECTION("Use stdin to launch process")
+    {
+        auto beforefd = get_num_fds();
+        {
+            auto process = fty::Process("bash");
+            auto pid     = process.run();
+            process.write("for I in {1..68000}; do printf \"X\";  done;");
+            CHECK(pid.isValid());
+            CHECK(*pid);
+            auto status = process.wait();
+            CHECK(status);
+            CHECK(*status == 0);
+            CHECK (process.readAllStandardError().length() == 0);
+            CHECK (process.readAllStandardOutput().length() == 68000);
+        }
+        auto afterfd = get_num_fds();
+        CHECK(beforefd == afterfd);
+    }
+
+    SECTION("Ignore capture")
+    {
+        auto beforefd = get_num_fds();
+        {
+            auto process = fty::Process("bash", {"-c", "for I in {1..68000}; do printf \"X\";  done;"}, fty::Capture::None);
+            auto pid     = process.run();
+            CHECK(pid.isValid());
+            CHECK(*pid);
+            auto status = process.wait();
+            CHECK(status);
+            CHECK(*status == 0);
+            CHECK (process.readAllStandardOutput().length() == 0);
+            CHECK (process.readAllStandardError().length() == 0);
+        }
+        auto afterfd = get_num_fds();
+        CHECK(beforefd == afterfd);
+    }
+
+    SECTION("Test on stderr")
+    {
+        auto beforefd = get_num_fds();
+        {
+            auto process = fty::Process("bash", {"-c", "for I in {1..68000}; do printf \"X\" >&2;  done;"});
+            auto pid     = process.run();
+            CHECK(pid.isValid());
+            CHECK(*pid);
+            auto status = process.wait();
+            CHECK(status);
+            CHECK(*status == 0);
+            CHECK (process.readAllStandardOutput().length() == 0);
+            CHECK (process.readAllStandardError().length() == 68000);
+        }
+        auto afterfd = get_num_fds();
+        CHECK(beforefd == afterfd);
+    }
 }
