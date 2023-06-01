@@ -1,5 +1,5 @@
 Source: fty-utils
-Maintainer: Clement Perrette <clementperrette@eaton.com>
+Maintainer: fty-utils Developers <opensource@eaton.com>
 Build-Depends:
   cmake (>=3.0),
   debhelper (>= 9),
