@@ -56,7 +56,7 @@ public:
 
     Expected<pid_t> run();
 
-    
+
     Expected<int>   wait(uint64_t timeoutMs = UNLIMITED, uint32_t waitCycleDurationMs = 100);
 
     std::string readAllStandardError(uint64_t timeoutMs = 100);
@@ -163,7 +163,7 @@ inline Process::~Process()
         close(m_stdout);
 	    m_stdout = 0;
     }
-    
+
     if(m_stderr) {
         close(m_stderr);
 	    m_stderr = 0;
@@ -180,6 +180,10 @@ inline Expected<pid_t> Process::run()
     int coutPipe[2];
     int cerrPipe[2];
     int cinPipe[2];
+
+    memset(coutPipe, 0, sizeof(coutPipe));
+    memset(cerrPipe, 0, sizeof(cerrPipe));
+    memset(cinPipe, 0, sizeof(cinPipe));
 
     try {
         posix_spawn_file_actions_t action;
@@ -251,7 +255,7 @@ inline Expected<pid_t> Process::run()
             //we do not need the stdin, so we close it
             if (!isSet(m_capture, Capture::In)) {
                 closeWriteChannel();
-            }   
+            }
         }
 
         return m_pid;
@@ -271,11 +275,11 @@ inline Expected<pid_t> Process::run()
         if(cerrPipe[0]) close(cerrPipe[0]);
         if(cerrPipe[1]) close(cerrPipe[1]);
 
-        return unexpected(e.what());  
+        return unexpected(e.what());
     }
 }
 
-//dumpPipeInStream is reading from file descriptor and 
+//dumpPipeInStream is reading from file descriptor and
 // if dumpData is set, it dump the data in the stream, otherwise the data are discarded
 inline int dumpPipeInStream(int fd, std::ostream & out, bool dumpData)
 {
@@ -291,7 +295,7 @@ inline int dumpPipeInStream(int fd, std::ostream & out, bool dumpData)
             out.write(buffer, bytesRead);
         }
     }
-    
+
     return bytesRead;
 }
 
@@ -376,7 +380,7 @@ inline Expected<int> Process::wait(uint64_t timeoutMs, uint32_t waitCycleDuratio
 
                 return unexpected(errMsg);
             }
-            
+
             return unexpected("Impossible to identify reason for stop");
         }
     }
@@ -397,14 +401,14 @@ inline std::string Process::readAllStandardOutput(uint64_t timeoutMs)
         m_streamOut.clear();
         m_streamOut.str(std::string());
     }
-    
+
     return str;
 }
 
 inline std::string Process::readAllStandardError(uint64_t timeoutMs)
 {
     std::string str;
-    
+
     //We do a dump in case there is a bit of data after 100ms (to be backward compatible...)
     std::this_thread::sleep_for(std::chrono::milliseconds(timeoutMs));
 
@@ -417,7 +421,7 @@ inline std::string Process::readAllStandardError(uint64_t timeoutMs)
         m_streamErr.clear();
         m_streamErr.str(std::string());
     }
-    
+
     return str;
 }
 
