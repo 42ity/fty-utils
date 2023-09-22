@@ -177,13 +177,9 @@ inline Process::~Process()
 
 inline Expected<pid_t> Process::run()
 {
-    int coutPipe[2];
-    int cerrPipe[2];
-    int cinPipe[2];
-
-    memset(coutPipe, 0, sizeof(coutPipe));
-    memset(cerrPipe, 0, sizeof(cerrPipe));
-    memset(cinPipe, 0, sizeof(cinPipe));
+    int coutPipe[2] = {0, 0};
+    int cerrPipe[2] = {0, 0};
+    int cinPipe[2]  = {0, 0};
 
     try {
         posix_spawn_file_actions_t action;
