@@ -43,7 +43,7 @@ public:
         template <typename Func>
         Impl(Func&& func);
 
-        void call(Args&&... args) const;
+        void call(const Args&... args) const;
 
     private:
         std::function<void(Args...)> m_function;
@@ -89,7 +89,7 @@ public:
         std::swap(m_connections, other.m_connections);
     }
 
-    void operator()(Args&&... args) const;
+    void operator()(const Args&... args) const;
 
     void connect(Slot<Args...>& slot);
 
@@ -123,7 +123,7 @@ Event<Args...>::~Event()
 }
 
 template <typename... Args>
-void Event<Args...>::operator()(Args&&... args) const
+void Event<Args...>::operator()(const Args&... args) const
 {
     {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -131,7 +131,7 @@ void Event<Args...>::operator()(Args&&... args) const
 
         for (auto iter = m_connections.begin(); iter != m_connections.end();) {
             if (auto caller = iter->lock()) {
-                caller->call(std::forward<Args>(args)...);
+                caller->call(args...);
                 ++iter;
             } else {
                 m_connections.erase(iter);
@@ -201,10 +201,10 @@ Slot<Args...>::Impl::Impl(Func&& func)
 }
 
 template <typename... Args>
-void Slot<Args...>::Impl::call(Args&&... args) const
+void Slot<Args...>::Impl::call(const Args&... args) const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    m_function(std::forward<Args>(args)...);
+    m_function(args...);
 }
 
 // ===========================================================================================================

@@ -27,52 +27,56 @@ static int statCall  = 0;
 class Consumer
 {
 public:
-    Consumer(fty::Event<int>& sig)
+    Consumer(fty::Event<int, std::string>& sig)
     {
         slot.connect(sig);
     }
 
-    void slot1(int val)
+    void slot1(int val, std::string sval)
     {
         ++memCall;
         CHECK((val == 42 || val == 112));
+        CHECK((sval == "42" || sval == "112"));
     }
 
 private:
-    fty::Slot<int> slot = {&Consumer::slot1, this};
+    fty::Slot<int, std::string> slot = {&Consumer::slot1, this};
 };
 
-static void func(int val)
+static void func(int val, std::string sval)
 {
     ++statCall;
     CHECK((val == 42 || val == 112));
+    CHECK((sval == "42" || sval == "112"));
 }
 
 TEST_CASE("Event")
 {
-    fty::Event<int> sig;
+    fty::Event<int, std::string> sig;
 
     Consumer cons(sig);
 
-    fty::Slot<int> slot2([](int val) {
+    fty::Slot<int, std::string> slot2([](int val, std::string sval) {
         ++lamCall;
         CHECK((val == 42 || val == 112));
+        CHECK((sval == "42" || sval == "112"));
     });
     slot2.connect(sig);
 
-    fty::Slot<int> slot4(&func);
+    fty::Slot<int, std::string> slot4(&func);
     sig.connect(slot4);
 
     {
-        fty::Slot<int> slot3([](int val) {
+        fty::Slot<int, std::string> slot3([](int val, std::string sval) {
             ++scopeCall;
             CHECK(val == 42);
+            CHECK(sval == "42");
         });
         sig.connect(slot3);
-        sig(42);
+        sig(42, "42");
     }
 
-    sig(112);
+    sig(112, "112");
 
     CHECK(memCall == 2);
     CHECK(lamCall == 2);
@@ -80,7 +84,7 @@ TEST_CASE("Event")
     CHECK(scopeCall == 1);
 
     auto sig1 = std::move(sig);
-    sig1(112);
+    sig1(112, "112");
     CHECK(memCall == 3);
     CHECK(lamCall == 3);
     CHECK(statCall == 3);
@@ -89,17 +93,19 @@ TEST_CASE("Event")
 
 TEST_CASE("Event thread")
 {
-    fty::Event<int&> sig;
+    fty::Event<int&, std::string&> sig;
 
     std::condition_variable var;
     std::mutex              mutex;
     bool                    fired = false;
     bool                    ready = false;
-    int                     val   = 0;
+    int                     val = 0;
+    std::string             sval {""};
 
     std::thread th2([&]() {
-        fty::Slot<int&> slot([&](int& inVal) {
-            inVal = 42;
+        fty::Slot<int&, std::string&> slot([&](int& iniVal, std::string& insVal) {
+            iniVal = 42;
+            insVal = "42";
         });
         sig.connect(slot);
 
@@ -122,7 +128,7 @@ TEST_CASE("Event thread")
                 return ready;
             });
 
-            sig(val);
+            sig(val, sval);
             fired = true;
         }
         var.notify_one();
@@ -132,4 +138,5 @@ TEST_CASE("Event thread")
     th1.join();
 
     CHECK(42 == val);
+    CHECK("42" == sval);
 }
