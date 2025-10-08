@@ -13,11 +13,14 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
     ========================================================================
 */
+
 #pragma once
+
 #include "traits.h"
 #include <sstream>
 #include <string>
 #include <type_traits>
+#include <cstdint>
 
 namespace fty {
 
