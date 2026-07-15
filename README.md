@@ -1,2 +1,2 @@
 # fty-utils
-Utilites headers only library
+c/cpp utilities (headers only library)
